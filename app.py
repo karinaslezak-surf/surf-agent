@@ -45,7 +45,7 @@ def init_db():
 
 init_db()
 
-st.title("River Currentson")
+st.title("🏄‍♂️ River Currentson")
 st.write("This agent checks the 48-hour forecast and alerts you when river surf spots are firing")
 
 session = SessionLocal()
@@ -76,7 +76,7 @@ with col1:
                 st.error("Spot already exists.")
 
 with col2:
-    st.subheader("Get surf alerts")
+    st.subheader("🚨 Get surf alerts")
     st.markdown("Message **@userinfobot** on Telegram to get your Chat ID")
     with st.form("add_user"):
         u_name = st.text_input("Your name")
