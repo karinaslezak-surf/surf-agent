@@ -46,7 +46,7 @@ def init_db():
 init_db()
 
 st.title("River Currentson")
-st.write("This agent checks the 48-hour forecast and alerts you when spots are firing")
+st.write("This agent checks the 48-hour forecast and alerts you when river surf spots are firing")
 
 session = SessionLocal()
 
