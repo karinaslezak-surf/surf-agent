@@ -1,0 +1,5 @@
+streamlit
+SQLAlchemy
+psycopg2-binary
+requests
+pandas
