@@ -93,7 +93,8 @@ def start_chatbot():
 
     @bot.message_handler(commands=['start', 'help'])
     def send_welcome(message):
-        bot.reply_to(message, "Yeww! 🤙 I'm River. River Currentson. Your personal AI surf agent. Text me anytime to check the waves!")
+        # Dialed back the cheekiness in the bot's intro message too!
+        bot.reply_to(message, "Hi, I'm River Currentson. Your personal AI surf agent. Text me anytime to check the waves!")
 
     @bot.message_handler(func=lambda message: True)
     def handle_message(message):
@@ -152,9 +153,10 @@ def start_chatbot():
             session.close()
 
             if GEMINI_API_KEY:
-                prompt = (f"You are a stoked river surfer AI assistant named River Currentson. A friend named '{user.name}' texted you: '{message.text}'\n\n"
+                # Removed the "surf slang" instruction so he talks a bit more professionally
+                prompt = (f"You are a helpful and reliable river surfer AI assistant named River Currentson. A friend named '{user.name}' texted you: '{message.text}'\n\n"
                           f"Live river flow data:\n{raw_data}\n\n"
-                          f"Reply naturally using this data. Use surf slang and dinosaur/surf emojis (like 🦖). Keep under 4 sentences.")
+                          f"Reply naturally using this data. Be helpful, accurate, and friendly. You can use a dinosaur or surf emoji occasionally. Keep under 4 sentences.")
                 
                 try:
                     ai_response = generate_ai_reply(prompt)
@@ -181,7 +183,6 @@ def start_chatbot():
 start_chatbot()
 
 # --- STREAMLIT UI ---
-# INLINE HTML: Makes the image match the title font perfectly!
 if os.path.exists("trex.png"):
     with open("trex.png", "rb") as image_file:
         encoded_string = base64.b64encode(image_file.read()).decode()
@@ -189,16 +190,16 @@ if os.path.exists("trex.png"):
         f'''
         <div style="display: flex; align-items: center; margin-bottom: 10px;">
             <img src="data:image/png;base64,{encoded_string}" width="45" style="margin-right: 15px;">
-            <h1 style="margin: 0; padding: 0;">Yeww! 🤙 Hi, I'm River. River Currentson, your surf agent.</h1>
+            <h1 style="margin: 0; padding: 0;">Hi, I'm River Currentson, your surf agent.</h1>
         </div>
         ''', 
         unsafe_allow_html=True
     )
-    st.write("") # Add a little space below
+    st.write("") 
 else:
-    st.title("🦖 Yeww! 🤙 Hi, I'm River. River Currentson, your surf agent.")
+    st.title("🦖 Hi, I'm River Currentson, your surf agent.")
 
-st.write("I check the 48-hour forecasts and hit up the crew when the local spots are firing.")
+st.write("I monitor the 48-hour forecasts and notify you when the local spots reach perfect flow.")
 
 session = SessionLocal()
 spots = session.query(Spot).all()
