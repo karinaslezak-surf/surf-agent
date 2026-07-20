@@ -8,8 +8,10 @@ import telebot
 import google.generativeai as genai
 from datetime import datetime, timedelta
 import time
+import os
 
-st.set_page_config(page_title="River Surf Agent", page_icon="🏄‍♂️", layout="wide")
+# Sentence case and new name
+st.set_page_config(page_title="River Currentson, your surf agent", page_icon="🦖", layout="wide")
 
 DB_URL = st.secrets.get("DATABASE_URL", "")
 if DB_URL.startswith("postgres://"):
@@ -54,37 +56,35 @@ init_db()
 TELEGRAM_TOKEN = st.secrets.get("TELEGRAM_TOKEN")
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY")
 
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+
+def generate_ai_reply(prompt_text):
+    if not GEMINI_API_KEY: return None
+    
+    fallback_models = ['gemini-1.5-flash', 'gemini-1.5-flash-8b', 'gemini-1.5-pro']
+    last_error = ""
+    
+    for m_name in fallback_models:
+        try:
+            model = genai.GenerativeModel(m_name)
+            return model.generate_content(prompt_text).text.strip()
+        except Exception as e:
+            last_error = str(e)
+            continue 
+            
+    raise Exception(f"All Google AI models failed. Last error: {last_error}")
+
 @st.cache_resource
 def start_chatbot():
     if not TELEGRAM_TOKEN:
         return "🔴 Offline: Missing TELEGRAM_TOKEN"
         
     bot = telebot.TeleBot(TELEGRAM_TOKEN)
-    
-    if GEMINI_API_KEY:
-        genai.configure(api_key=GEMINI_API_KEY)
-        
-        # --- THE 404 FIX: DYNAMIC MODEL SELECTOR ---
-        active_model = 'gemini-1.5-flash' # fallback
-        try:
-            # Asks Google which models your specific key is allowed to use!
-            available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-            flash_models = [m for m in available_models if 'flash' in m.lower()]
-            
-            if flash_models:
-                active_model = flash_models[0]
-            elif available_models:
-                active_model = available_models[0]
-        except Exception:
-            pass
-            
-        model = genai.GenerativeModel(active_model)
-    else:
-        model = None
 
     @bot.message_handler(commands=['start', 'help'])
     def send_welcome(message):
-        bot.reply_to(message, "Yeww! 🤙 The Surf Agent is online. Text me anything to check the waves!")
+        bot.reply_to(message, "Yeww! 🦖 I am River Currentson, your surf agent. Text me anything to check the waves!")
 
     @bot.message_handler(func=lambda message: True)
     def handle_message(message):
@@ -96,7 +96,7 @@ def start_chatbot():
             user = session.query(User).filter_by(telegram_chat_id=chat_id).first()
             
             if not user:
-                bot.reply_to(message, f"🛑 Whoa there! Your Chat ID is {chat_id}, but you aren't on the VIP list. Subscribe on the app first!")
+                bot.reply_to(message, f"🛑 Whoa there! Your chat ID is {chat_id}, but you aren't on the VIP list. Subscribe on the app first!")
                 session.close()
                 return
 
@@ -142,16 +142,22 @@ def start_chatbot():
                     pass
             session.close()
 
-            if model:
-                prompt = (f"You are a stoked river surfer AI assistant. A friend named '{user.name}' texted you: '{message.text}'\n\n"
+            if GEMINI_API_KEY:
+                # Tell the bot who he is!
+                prompt = (f"You are a stoked river surfer AI assistant named River Currentson. A friend named '{user.name}' texted you: '{message.text}'\n\n"
                           f"Live river flow data:\n{raw_data}\n\n"
-                          f"Reply naturally using this data. Use surf slang and emojis. Keep under 4 sentences.")
-                bot.reply_to(message, model.generate_content(prompt).text.strip())
+                          f"Reply naturally using this data. Use surf slang and dinosaur/surf emojis (like 🦖). Keep under 4 sentences.")
+                
+                try:
+                    ai_response = generate_ai_reply(prompt)
+                    bot.reply_to(message, ai_response)
+                except Exception as ai_e:
+                    bot.reply_to(message, f"Raw stats (AI is sleeping 😴):\n{raw_data}")
             else:
                 bot.reply_to(message, f"Raw stats:\n{raw_data}")
         
         except Exception as e:
-            try: bot.reply_to(message, f"🤖 Oops! Brain glitch! Error: {str(e)}")
+            try: bot.reply_to(message, f"🤖 Oops! Core bot glitch! Error: {str(e)}")
             except: pass
 
     def run_polling():
@@ -163,15 +169,21 @@ def start_chatbot():
             except Exception: time.sleep(3)
 
     threading.Thread(target=run_polling, daemon=True).start()
-    return "🟢 AI Chatbot is Online and Listening!"
+    return "🟢 River Currentson is online and listening!"
 
 bot_status = start_chatbot()
 
 # --- STREAMLIT UI ---
-st.title("🏄‍♂️ River Surf Agent")
+# Magic Image Loader: Uses the image if you uploaded it, falls back to emoji if you didn't!
+if os.path.exists("trex.png"):
+    st.image("trex.png", width=150)
+    st.title("River Currentson, your surf agent")
+else:
+    st.title("🦖 River Currentson, your surf agent")
+
 if "🟢" in bot_status: st.success(f"**Status:** {bot_status}")
 else: st.error(f"**Status:** {bot_status}")
-st.write("This agent checks the 48-hour forecast and alerts you when spots are firing.")
+st.write("River checks the 48-hour forecast and alerts you when spots are firing.")
 
 session = SessionLocal()
 spots = session.query(Spot).all()
@@ -181,14 +193,14 @@ if spots:
 
 col1, col2 = st.columns(2)
 with col1:
-    st.subheader("📍 Add a Secret Spot")
+    st.subheader("📍 Add a secret spot")
     with st.form("add_spot"):
-        s_name = st.text_input("Spot Name")
+        s_name = st.text_input("Spot name")
         s_lat = st.number_input("Latitude", format="%.4f")
         s_lon = st.number_input("Longitude", format="%.4f")
-        s_min = st.number_input("Min Flow (m³/s)", step=10.0, value=50.0)
-        s_max = st.number_input("Max Flow (m³/s)", step=10.0, value=150.0)
-        if st.form_submit_button("Save Spot") and s_name:
+        s_min = st.number_input("Min flow (m³/s)", step=10.0, value=50.0)
+        s_max = st.number_input("Max flow (m³/s)", step=10.0, value=150.0)
+        if st.form_submit_button("Save spot") and s_name:
             try:
                 session.add(Spot(name=s_name, latitude=s_lat, longitude=s_lon, min_flow=s_min, max_flow=s_max))
                 session.commit()
@@ -199,10 +211,10 @@ with col1:
                 st.error("Spot already exists.")
 
 with col2:
-    st.subheader("📱 Get Surf Alerts")
+    st.subheader("📱 Get surf alerts")
     with st.form("add_user"):
-        u_name = st.text_input("Your Name")
-        u_chat_id = st.text_input("Telegram Chat ID", placeholder="e.g. 123456789")
+        u_name = st.text_input("Your name")
+        u_chat_id = st.text_input("Telegram chat ID", placeholder="e.g. 123456789")
         if st.form_submit_button("Subscribe") and u_name and u_chat_id:
             try:
                 session.add(User(name=u_name, telegram_chat_id=u_chat_id.strip()))
