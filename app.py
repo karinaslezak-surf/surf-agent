@@ -10,7 +10,6 @@ from datetime import datetime, timedelta
 
 st.set_page_config(page_title="River Surf Agent", page_icon="🏄‍♂️", layout="wide")
 
-# 1. Connect to Database Securely
 DB_URL = st.secrets["DATABASE_URL"]
 if DB_URL.startswith("postgres://"):
     DB_URL = DB_URL.replace("postgres://", "postgresql://", 1)
@@ -51,15 +50,12 @@ def init_db():
 
 init_db()
 
-# --- 2. THE CHATBOT BRAIN (RUNS IN BACKGROUND) ---
 TELEGRAM_TOKEN = st.secrets.get("TELEGRAM_TOKEN")
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY")
 
 @st.cache_resource
 def start_chatbot():
-    if not TELEGRAM_TOKEN:
-        return False
-        
+    if not TELEGRAM_TOKEN: return False
     bot = telebot.TeleBot(TELEGRAM_TOKEN)
     
     if GEMINI_API_KEY:
@@ -71,78 +67,91 @@ def start_chatbot():
     @bot.message_handler(func=lambda message: True)
     def handle_message(message):
         session = SessionLocal()
-        
-        # Security: Only reply to your friends who are saved in the database!
         user = session.query(User).filter_by(telegram_chat_id=str(message.chat.id)).first()
         if not user:
-            bot.reply_to(message, "Whoa there! 🛑 You aren't on the VIP list. Go to the app and subscribe first!")
+            bot.reply_to(message, "Whoa there! 🛑 You aren't on the VIP list. Subscribe on the app first!")
             session.close()
             return
 
-        # Show the "typing..." status in Telegram
         bot.send_chat_action(message.chat.id, 'typing')
-        
         spots = session.query(Spot).all()
-        target_date = (datetime.utcnow() + timedelta(days=2)).strftime("%Y-%m-%d")
         today_date = datetime.utcnow().strftime("%Y-%m-%d")
+        target_date = (datetime.utcnow() + timedelta(days=2)).strftime("%Y-%m-%d")
         
         raw_data = ""
         for spot in spots:
-            api_url = f"https://flood-api.open-meteo.com/v1/flood?latitude={spot.latitude}&longitude={spot.longitude}&daily=river_discharge"
+            # RADAR SWEEP FIX
+            offsets = [0, 0.02, -0.02, 0.04, -0.04]
+            lats, lons = [], []
+            for d_lat in offsets:
+                for d_lon in offsets:
+                    lats.append(str(round(spot.latitude + d_lat, 4)))
+                    lons.append(str(round(spot.longitude + d_lon, 4)))
+            
+            api_url = f"https://flood-api.open-meteo.com/v1/flood?latitude={','.join(lats)}&longitude={','.join(lons)}&daily=river_discharge"
+            
             try:
                 resp = requests.get(api_url).json()
-                dates = resp['daily']['time']
-                discharges = resp['daily']['river_discharge']
+                if not isinstance(resp, list):
+                    if 'error' in resp:
+                        continue
+                    resp = [resp]
                 
-                flow_today = discharges[dates.index(today_date)]
-                flow_future = discharges[dates.index(target_date)]
+                best_today, best_future = -1, -1
+                for loc in resp:
+                    dates = loc.get('daily', {}).get('time', [])
+                    discharges = loc.get('daily', {}).get('river_discharge', [])
+                    if today_date in dates and target_date in dates:
+                        try:
+                            idx_today = dates.index(today_date)
+                            idx_future = dates.index(target_date)
+                            t_flow = discharges[idx_today]
+                            f_flow = discharges[idx_future]
+                            
+                            # Find the massive river volume, ignore the dirt/rain runoff!
+                            if t_flow is not None and t_flow > best_today:
+                                best_today = t_flow
+                                best_future = f_flow if f_flow is not None else 0
+                        except ValueError:
+                            pass
                 
-                raw_data += f"- {spot.name}: {flow_today} m³/s today, {flow_future} m³/s in 2 days. (Ideal is {spot.min_flow}-{spot.max_flow})\n"
-            except:
+                t_str = round(best_today, 1) if best_today != -1 else "N/A"
+                f_str = round(best_future, 1) if best_future != -1 else "N/A"
+                raw_data += f"- {spot.name}: {t_str} m³/s today, {f_str} m³/s in 2 days. (Ideal is {spot.min_flow}-{spot.max_flow})\n"
+            except Exception:
                 pass
         session.close()
 
         if model:
-            # Tell Gemini exactly who it is talking to and give it the stats!
-            prompt = (f"You are a stoked river surfer AI assistant. A friend named '{user.name}' just texted you: '{message.text}'\n\n"
-                      f"Here is the live water flow data for your spots:\n{raw_data}\n\n"
-                      f"Reply to them naturally. If they ask about the waves, use the data to tell them what's firing. "
-                      f"Use surf slang and emojis. Keep it under 4 sentences.")
+            prompt = (f"You are a stoked river surfer AI assistant. A friend named '{user.name}' texted you: '{message.text}'\n\n"
+                      f"Live river flow data:\n{raw_data}\n\n"
+                      f"Reply naturally using this data. Use surf slang and emojis. Keep under 4 sentences.")
             try:
-                reply = model.generate_content(prompt).text.strip()
+                bot.reply_to(message, model.generate_content(prompt).text.strip())
             except Exception:
-                reply = f"My AI brain is glitching! But here are the raw stats:\n{raw_data}"
+                bot.reply_to(message, f"Brain glitch! Raw stats:\n{raw_data}")
         else:
-            reply = f"Here are the latest stats:\n{raw_data}"
-            
-        bot.reply_to(message, reply)
+            bot.reply_to(message, f"Raw stats:\n{raw_data}")
 
-    # This prevents the listener from blocking the rest of the website
     def run_polling():
-        try:
-            bot.infinity_polling(skip_pending=True)
-        except:
-            pass
+        try: bot.infinity_polling(skip_pending=True)
+        except Exception: pass
 
-    thread = threading.Thread(target=run_polling, daemon=True)
-    thread.start()
+    threading.Thread(target=run_polling, daemon=True).start()
     return True
 
 start_chatbot()
 
-# --- 3. STREAMLIT UI ---
 st.title("🏄‍♂️ River Surf Agent")
 st.write("This agent checks the 48-hour forecast and alerts you when spots are firing.")
 
 session = SessionLocal()
-
 spots = session.query(Spot).all()
+
 if spots:
-    map_data = pd.DataFrame([{"lat": s.latitude, "lon": s.longitude} for s in spots])
-    st.map(map_data)
+    st.map(pd.DataFrame([{"lat": s.latitude, "lon": s.longitude} for s in spots]))
 
 col1, col2 = st.columns(2)
-
 with col1:
     st.subheader("📍 Add a Secret Spot")
     with st.form("add_spot"):
@@ -155,29 +164,23 @@ with col1:
             try:
                 session.add(Spot(name=s_name, latitude=s_lat, longitude=s_lon, min_flow=s_min, max_flow=s_max))
                 session.commit()
-                st.success(f"{s_name} added secretly! 🤫")
+                st.success(f"{s_name} added! 🤫")
                 st.rerun()
-            except:
+            except Exception:
                 session.rollback()
                 st.error("Spot already exists.")
 
 with col2:
     st.subheader("📱 Get Surf Alerts")
-    st.markdown("Subscribe to get a message when conditions are perfect.")
     with st.form("add_user"):
         u_name = st.text_input("Your Name")
-        u_chat_id = st.text_input(
-            "Telegram Chat ID",
-            placeholder="e.g. 123456789",
-            help="**How to get your ID:**\n\n1. Open Telegram\n2. Search for **@userinfobot**\n3. Click Start\n4. Copy the ID number it replies with and paste it here."
-        )
+        u_chat_id = st.text_input("Telegram Chat ID", placeholder="e.g. 123456789", help="1. Open Telegram\n2. Search @userinfobot\n3. Click Start\n4. Copy ID here.")
         if st.form_submit_button("Subscribe") and u_name and u_chat_id:
             try:
                 session.add(User(name=u_name, telegram_chat_id=u_chat_id))
                 session.commit()
-                st.success("You are on the list! 📱\n\n**CRITICAL:** Go to Telegram, search for our bot, and click 'Start'.")
-            except:
+                st.success("You are on the list! Go to Telegram, search for our bot, and click 'Start'.")
+            except Exception:
                 session.rollback()
                 st.error("Already subscribed.")
-
 session.close()
