@@ -71,13 +71,21 @@ if GEMINI_API_KEY:
 def generate_ai_reply(prompt_text):
     if not GEMINI_API_KEY: return None
     
+    # FIX 1: Disable overprotective safety filters so surf slang doesn't crash the bot
+    safety_settings = [
+        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+    ]
+    
     fallback_models = ['gemini-1.5-flash', 'gemini-1.5-flash-8b', 'gemini-1.5-pro']
     last_error = ""
     
     for m_name in fallback_models:
         try:
             model = genai.GenerativeModel(m_name)
-            return model.generate_content(prompt_text).text.strip()
+            return model.generate_content(prompt_text, safety_settings=safety_settings).text.strip()
         except Exception as e:
             last_error = str(e)
             continue 
@@ -93,8 +101,7 @@ def start_chatbot():
 
     @bot.message_handler(commands=['start', 'help'])
     def send_welcome(message):
-        # Dialed back the cheekiness in the bot's intro message too!
-        bot.reply_to(message, "Hi, I'm River Currentson. Your personal AI surf agent. Text me anytime to check the waves!")
+        bot.reply_to(message, "Yeww! 🤙 Hi, I'm River. River Currentson, your surf agent. Text me anytime to check the waves!")
 
     @bot.message_handler(func=lambda message: True)
     def handle_message(message):
@@ -153,16 +160,16 @@ def start_chatbot():
             session.close()
 
             if GEMINI_API_KEY:
-                # Removed the "surf slang" instruction so he talks a bit more professionally
-                prompt = (f"You are a helpful and reliable river surfer AI assistant named River Currentson. A friend named '{user.name}' texted you: '{message.text}'\n\n"
+                prompt = (f"Act as River Currentson, a knowledgeable and laid-back river surf agent. A friend named '{user.name}' texted you: '{message.text}'\n\n"
                           f"Live river flow data:\n{raw_data}\n\n"
-                          f"Reply naturally using this data. Be helpful, accurate, and friendly. You can use a dinosaur or surf emoji occasionally. Keep under 4 sentences.")
+                          f"Reply naturally using this data. Be helpful and reliable. Use a surf or dinosaur emoji occasionally. Keep it under 4 sentences.")
                 
                 try:
                     ai_response = generate_ai_reply(prompt)
                     bot.reply_to(message, ai_response)
                 except Exception as ai_e:
-                    bot.reply_to(message, f"Raw stats (AI is sleeping 😴):\n{raw_data}")
+                    # FIX 2: Print the exact error so we can debug it if Google fails again!
+                    bot.reply_to(message, f"Raw stats (AI Error: {str(ai_e)[:150]}):\n{raw_data}")
             else:
                 bot.reply_to(message, f"Raw stats:\n{raw_data}")
         
@@ -188,16 +195,15 @@ if os.path.exists("trex.png"):
         encoded_string = base64.b64encode(image_file.read()).decode()
     st.markdown(
         f'''
-        <div style="display: flex; align-items: center; margin-bottom: 10px;">
-            <img src="data:image/png;base64,{encoded_string}" width="45" style="margin-right: 15px;">
-            <h1 style="margin: 0; padding: 0;">Hi, I'm River Currentson, your surf agent.</h1>
+        <div style="display: flex; align-items: center; margin-bottom: 20px;">
+            <img src="data:image/png;base64,{encoded_string}" style="height: 2.2rem; width: auto; margin-right: 15px;">
+            <h1 style="margin: 0; padding: 0;">Yeww! 🤙 Hi, I'm River. River Currentson, your surf agent.</h1>
         </div>
         ''', 
         unsafe_allow_html=True
     )
-    st.write("") 
 else:
-    st.title("🦖 Hi, I'm River Currentson, your surf agent.")
+    st.title("🦖 Yeww! 🤙 Hi, I'm River. River Currentson, your surf agent.")
 
 st.write("I monitor the 48-hour forecasts and notify you when the local spots reach perfect flow.")
 
@@ -228,6 +234,16 @@ with col1:
 
 with col2:
     st.subheader("📱 Get surf alerts")
+    
+    st.markdown(
+        """
+        **How to find your Chat ID:**
+        1. Open Telegram and search for [**@userinfobot**](https://t.me/userinfobot) (or click the link).
+        2. Tap **Start**.
+        3. Copy the ID number it replies with and paste it below!
+        """
+    )
+    
     with st.form("add_user"):
         u_name = st.text_input("Your name")
         u_chat_id = st.text_input("Telegram chat ID", placeholder="e.g. 123456789")
@@ -241,8 +257,8 @@ with col2:
                 st.error("Already subscribed.")
                 
     if bot_username:
-        st.info(f"💡 **Pro tip:** Don't want to wait? Once subscribed, click here to message [**@{bot_username}**](https://t.me/{bot_username}) on Telegram and ask *'How are the waves?'* anytime!")
+        st.info(f"💡 **Want instant updates?** Once you subscribe, you can click here to message [**@{bot_username}**](https://t.me/{bot_username}) anytime and ask *'How are the waves?'*")
     else:
-        st.info("💡 **Pro tip:** Don't want to wait? Once subscribed, you can message the bot on Telegram and ask *'How are the waves?'* anytime!")
+        st.info("💡 **Want instant updates?** Once you subscribe, you can message the bot on Telegram anytime and ask *'How are the waves?'*")
 
 session.close()
