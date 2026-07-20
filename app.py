@@ -78,7 +78,7 @@ def generate_ai_reply(prompt_text):
 @st.cache_resource
 def start_chatbot():
     if not TELEGRAM_TOKEN:
-        return "🔴 Offline: Missing TELEGRAM_TOKEN"
+        return
         
     bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
@@ -169,20 +169,22 @@ def start_chatbot():
             except Exception: time.sleep(3)
 
     threading.Thread(target=run_polling, daemon=True).start()
-    return "🟢 River Currentson is online and listening!"
 
-bot_status = start_chatbot()
+# We still start the bot in the background, but we don't save or print the status!
+start_chatbot()
 
 # --- STREAMLIT UI ---
-# Magic Image Loader: Uses the image if you uploaded it, falls back to emoji if you didn't!
+# Magic Image Loader
 if os.path.exists("trex.png"):
-    st.image("trex.png", width=150)
-    st.title("River Currentson, your surf agent")
+    # Using columns to align the image and title nicely side-by-side
+    col_img, col_title = st.columns([1, 8])
+    with col_img:
+        st.image("trex.png", use_container_width=True)
+    with col_title:
+        st.title("River Currentson, your surf agent")
 else:
     st.title("🦖 River Currentson, your surf agent")
 
-if "🟢" in bot_status: st.success(f"**Status:** {bot_status}")
-else: st.error(f"**Status:** {bot_status}")
 st.write("River checks the 48-hour forecast and alerts you when spots are firing.")
 
 session = SessionLocal()
