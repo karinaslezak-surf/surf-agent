@@ -9,8 +9,9 @@ import google.generativeai as genai
 from datetime import datetime, timedelta
 import time
 import os
+import base64
 
-st.set_page_config(page_title="River Currentson, your surf agent", page_icon="🦖", layout="wide")
+st.set_page_config(page_title="River Currentson", page_icon="🦖", layout="wide")
 
 DB_URL = st.secrets.get("DATABASE_URL", "")
 if DB_URL.startswith("postgres://"):
@@ -55,7 +56,6 @@ init_db()
 TELEGRAM_TOKEN = st.secrets.get("TELEGRAM_TOKEN")
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY")
 
-# MAGIC FEATURE: Automatically fetch your bot's username from Telegram to create a clickable link!
 bot_username = ""
 if TELEGRAM_TOKEN:
     try:
@@ -93,7 +93,7 @@ def start_chatbot():
 
     @bot.message_handler(commands=['start', 'help'])
     def send_welcome(message):
-        bot.reply_to(message, "Yeww! 🦖 I am River Currentson, your surf agent. Text me anything to check the waves!")
+        bot.reply_to(message, "Yeww! 🤙 I'm River. River Currentson. Your personal AI surf agent. Text me anytime to check the waves!")
 
     @bot.message_handler(func=lambda message: True)
     def handle_message(message):
@@ -181,16 +181,24 @@ def start_chatbot():
 start_chatbot()
 
 # --- STREAMLIT UI ---
+# INLINE HTML: Makes the image match the title font perfectly!
 if os.path.exists("trex.png"):
-    col_img, col_title = st.columns([1, 8])
-    with col_img:
-        st.image("trex.png", use_container_width=True)
-    with col_title:
-        st.title("River Currentson, your surf agent")
+    with open("trex.png", "rb") as image_file:
+        encoded_string = base64.b64encode(image_file.read()).decode()
+    st.markdown(
+        f'''
+        <div style="display: flex; align-items: center; margin-bottom: 10px;">
+            <img src="data:image/png;base64,{encoded_string}" width="45" style="margin-right: 15px;">
+            <h1 style="margin: 0; padding: 0;">Yeww! 🤙 Hi, I'm River. River Currentson, your surf agent.</h1>
+        </div>
+        ''', 
+        unsafe_allow_html=True
+    )
+    st.write("") # Add a little space below
 else:
-    st.title("🦖 River Currentson, your surf agent")
+    st.title("🦖 Yeww! 🤙 Hi, I'm River. River Currentson, your surf agent.")
 
-st.write("River checks the 48-hour forecast and alerts you when spots are firing.")
+st.write("I check the 48-hour forecasts and hit up the crew when the local spots are firing.")
 
 session = SessionLocal()
 spots = session.query(Spot).all()
@@ -231,7 +239,6 @@ with col2:
                 session.rollback()
                 st.error("Already subscribed.")
                 
-    # --- NEW: PRO TIP BOX WITH CLICKABLE LINK ---
     if bot_username:
         st.info(f"💡 **Pro tip:** Don't want to wait? Once subscribed, click here to message [**@{bot_username}**](https://t.me/{bot_username}) on Telegram and ask *'How are the waves?'* anytime!")
     else:
