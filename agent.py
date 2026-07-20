@@ -34,7 +34,7 @@ if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
 def get_ai_surf_message(spot_name, target_date, forecast_flow):
-    fallback_msg = (f"🦖 River Currentson here! Surf alert!\n\n*{spot_name}* is looking perfect in 2 days!\n"
+    fallback_msg = (f"Hi, I'm River Currentson. Surf alert!\n\n*{spot_name}* is looking perfect in 2 days!\n"
                     f"Date: {target_date}\nForecast: {forecast_flow} m³/s\n\nPack your gear!")
     
     if not GEMINI_API_KEY:
@@ -44,20 +44,24 @@ def get_ai_surf_message(spot_name, target_date, forecast_flow):
               f"telling them the river wave at {spot_name} is pumping in 2 days ({target_date}). "
               f"The water flow forecast is {forecast_flow} m³/s. Be friendly and natural, use a dinosaur or surf emoji. No hashtags.")
     
-    # Disable safety filters here too!
-    safety_settings = [
-        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-    ]
+    try:
+        available = [m.name.replace('models/', '') for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+    except Exception:
+        available = ['gemini-1.5-flash', 'gemini-1.5-flash-8b']
+        
+    if not available:
+        available = ['gemini-1.5-flash']
+        
+    models_to_try = [m for m in available if 'flash' in m] + [m for m in available if 'flash' not in m]
     
-    models = ['gemini-1.5-flash', 'gemini-1.5-flash-8b', 'gemini-1.5-pro']
-    
-    for m in models:
+    for m_name in models_to_try[:3]:
         try:
-            model = genai.GenerativeModel(m)
-            return model.generate_content(prompt, safety_settings=safety_settings).text.strip()
+            model = genai.GenerativeModel(m_name)
+            response = model.generate_content(prompt)
+            try:
+                return response.text.strip()
+            except ValueError:
+                continue
         except Exception:
             continue
             
