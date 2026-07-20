@@ -32,7 +32,21 @@ class User(Base):
 
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    
+    # --- THE 404 FIX: DYNAMIC MODEL SELECTOR ---
+    active_model = 'gemini-1.5-flash' # fallback
+    try:
+        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        flash_models = [m for m in available_models if 'flash' in m.lower()]
+        
+        if flash_models:
+            active_model = flash_models[0]
+        elif available_models:
+            active_model = available_models[0]
+    except Exception:
+        pass
+        
+    model = genai.GenerativeModel(active_model)
 else:
     model = None
 
@@ -69,7 +83,6 @@ def run_agent():
     target_date = (datetime.utcnow() + timedelta(days=2)).strftime("%Y-%m-%d")
 
     for spot in spots:
-        # RADAR SWEEP FIX: Search a 25-point grid around the spot to find the main river pixel
         offsets = [0, 0.02, -0.02, 0.04, -0.04]
         lats, lons = [], []
         for d_lat in offsets:
@@ -88,7 +101,6 @@ def run_agent():
                 
             best_flow = -1
             
-            # Check all 25 pixels and take the massive water volume (the main river)
             for loc in resp:
                 dates = loc.get('daily', {}).get('time', [])
                 discharges = loc.get('daily', {}).get('river_discharge', [])
