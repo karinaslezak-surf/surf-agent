@@ -55,6 +55,16 @@ init_db()
 TELEGRAM_TOKEN = st.secrets.get("TELEGRAM_TOKEN")
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY")
 
+# MAGIC FEATURE: Automatically fetch your bot's username from Telegram to create a clickable link!
+bot_username = ""
+if TELEGRAM_TOKEN:
+    try:
+        bot_info = requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getMe", timeout=5).json()
+        if bot_info.get("ok"):
+            bot_username = bot_info["result"]["username"]
+    except Exception:
+        pass
+
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
@@ -168,11 +178,9 @@ def start_chatbot():
 
     threading.Thread(target=run_polling, daemon=True).start()
 
-# We still start the bot silently in the background!
 start_chatbot()
 
 # --- STREAMLIT UI ---
-# Magic Image Loader: Uses the image if you uploaded it, falls back to emoji if you didn't
 if os.path.exists("trex.png"):
     col_img, col_title = st.columns([1, 8])
     with col_img:
@@ -222,4 +230,11 @@ with col2:
             except Exception:
                 session.rollback()
                 st.error("Already subscribed.")
+                
+    # --- NEW: PRO TIP BOX WITH CLICKABLE LINK ---
+    if bot_username:
+        st.info(f"💡 **Pro tip:** Don't want to wait? Once subscribed, click here to message [**@{bot_username}**](https://t.me/{bot_username}) on Telegram and ask *'How are the waves?'* anytime!")
+    else:
+        st.info("💡 **Pro tip:** Don't want to wait? Once subscribed, you can message the bot on Telegram and ask *'How are the waves?'* anytime!")
+
 session.close()
