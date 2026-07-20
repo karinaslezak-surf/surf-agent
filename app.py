@@ -15,7 +15,6 @@ DB_URL = st.secrets.get("DATABASE_URL", "")
 if DB_URL.startswith("postgres://"):
     DB_URL = DB_URL.replace("postgres://", "postgresql://", 1)
 
-# STABILITY FIX 1: pool_pre_ping=True stops the database from crashing the app when it wakes up from sleep!
 engine = create_engine(DB_URL, pool_pre_ping=True)
 Base = declarative_base()
 
@@ -55,7 +54,6 @@ init_db()
 TELEGRAM_TOKEN = st.secrets.get("TELEGRAM_TOKEN")
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY")
 
-# --- BULLETPROOF CHATBOT BRAIN ---
 @st.cache_resource
 def start_chatbot():
     if not TELEGRAM_TOKEN:
@@ -65,11 +63,25 @@ def start_chatbot():
     
     if GEMINI_API_KEY:
         genai.configure(api_key=GEMINI_API_KEY)
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        # --- THE 404 FIX: DYNAMIC MODEL SELECTOR ---
+        active_model = 'gemini-1.5-flash' # fallback
+        try:
+            # Asks Google which models your specific key is allowed to use!
+            available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+            flash_models = [m for m in available_models if 'flash' in m.lower()]
+            
+            if flash_models:
+                active_model = flash_models[0]
+            elif available_models:
+                active_model = available_models[0]
+        except Exception:
+            pass
+            
+        model = genai.GenerativeModel(active_model)
     else:
         model = None
 
-    # ADDED: A command just to test if the bot is awake
     @bot.message_handler(commands=['start', 'help'])
     def send_welcome(message):
         bot.reply_to(message, "Yeww! 🤙 The Surf Agent is online. Text me anything to check the waves!")
@@ -77,7 +89,6 @@ def start_chatbot():
     @bot.message_handler(func=lambda message: True)
     def handle_message(message):
         try:
-            # INSTANT FEEDBACK: Trigger the typing animation immediately!
             bot.send_chat_action(message.chat.id, 'typing')
             
             session = SessionLocal()
@@ -140,22 +151,16 @@ def start_chatbot():
                 bot.reply_to(message, f"Raw stats:\n{raw_data}")
         
         except Exception as e:
-            # STABILITY FIX 2: It will never fail silently again. It tells you why it broke!
             try: bot.reply_to(message, f"🤖 Oops! Brain glitch! Error: {str(e)}")
             except: pass
 
     def run_polling():
-        try:
-            bot.remove_webhook() # Clears out "Ghost Bots" that block Telegram
-        except Exception:
-            pass
+        try: bot.remove_webhook() 
+        except Exception: pass
             
-        # STABILITY FIX 3: Infinite Auto-Restart Loop prevents silent death
         while True:
-            try:
-                bot.infinity_polling(skip_pending=True)
-            except Exception:
-                time.sleep(3)
+            try: bot.infinity_polling(skip_pending=True)
+            except Exception: time.sleep(3)
 
     threading.Thread(target=run_polling, daemon=True).start()
     return "🟢 AI Chatbot is Online and Listening!"
@@ -164,13 +169,8 @@ bot_status = start_chatbot()
 
 # --- STREAMLIT UI ---
 st.title("🏄‍♂️ River Surf Agent")
-
-# Visual Indicator for the Bot!
-if "🟢" in bot_status:
-    st.success(f"**Status:** {bot_status}")
-else:
-    st.error(f"**Status:** {bot_status}")
-
+if "🟢" in bot_status: st.success(f"**Status:** {bot_status}")
+else: st.error(f"**Status:** {bot_status}")
 st.write("This agent checks the 48-hour forecast and alerts you when spots are firing.")
 
 session = SessionLocal()
@@ -205,7 +205,6 @@ with col2:
         u_chat_id = st.text_input("Telegram Chat ID", placeholder="e.g. 123456789")
         if st.form_submit_button("Subscribe") and u_name and u_chat_id:
             try:
-                # STRIP FIX: Remove accidental spaces if someone copied their ID weirdly
                 session.add(User(name=u_name, telegram_chat_id=u_chat_id.strip()))
                 session.commit()
                 st.success("You are on the list! Go to Telegram, search for our bot, and click 'Start'.")
