@@ -40,16 +40,24 @@ def get_ai_surf_message(spot_name, target_date, forecast_flow):
     if not GEMINI_API_KEY:
         return fallback_msg
         
-    prompt = (f"Act as a helpful and reliable river surfer named River Currentson. Write a short text (under 3 sentences) to my friends "
+    prompt = (f"Act as River Currentson, a knowledgeable and laid-back river surf agent. Write a short text (under 3 sentences) to my friends "
               f"telling them the river wave at {spot_name} is pumping in 2 days ({target_date}). "
-              f"The water flow forecast is {forecast_flow} m³/s. Be friendly and natural, you can use a dinosaur or surf emoji. No hashtags.")
+              f"The water flow forecast is {forecast_flow} m³/s. Be friendly and natural, use a dinosaur or surf emoji. No hashtags.")
+    
+    # Disable safety filters here too!
+    safety_settings = [
+        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+    ]
     
     models = ['gemini-1.5-flash', 'gemini-1.5-flash-8b', 'gemini-1.5-pro']
     
     for m in models:
         try:
             model = genai.GenerativeModel(m)
-            return model.generate_content(prompt).text.strip()
+            return model.generate_content(prompt, safety_settings=safety_settings).text.strip()
         except Exception:
             continue
             
