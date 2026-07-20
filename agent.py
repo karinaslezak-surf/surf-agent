@@ -32,36 +32,28 @@ class User(Base):
 
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
-    
-    # --- THE 404 FIX: DYNAMIC MODEL SELECTOR ---
-    active_model = 'gemini-1.5-flash' # fallback
-    try:
-        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        flash_models = [m for m in available_models if 'flash' in m.lower()]
-        
-        if flash_models:
-            active_model = flash_models[0]
-        elif available_models:
-            active_model = available_models[0]
-    except Exception:
-        pass
-        
-    model = genai.GenerativeModel(active_model)
-else:
-    model = None
 
 def get_ai_surf_message(spot_name, target_date, forecast_flow):
-    fallback_msg = (f"🏄‍♂️ SURF ALERT!\n\n*{spot_name}* is looking PERFECT in 2 days!\n"
+    fallback_msg = (f"🦖 River Currentson here! Surf alert!\n\n*{spot_name}* is looking perfect in 2 days!\n"
                     f"Date: {target_date}\nForecast: {forecast_flow} m³/s\n\nPack your gear!")
-    if not model:
+    
+    if not GEMINI_API_KEY:
         return fallback_msg
-    try:
-        prompt = (f"Act as a stoked river surfer. Write a short, funny text (under 3 sentences) to my friends "
-                  f"telling them the river wave at {spot_name} is pumping in 2 days ({target_date}). "
-                  f"The water flow forecast is {forecast_flow} m³/s. Use surf slang and emojis. No hashtags.")
-        return model.generate_content(prompt).text.strip()
-    except Exception:
-        return fallback_msg
+        
+    prompt = (f"Act as a stoked river surfer named River Currentson. Write a short, funny text (under 3 sentences) to my friends "
+              f"telling them the river wave at {spot_name} is pumping in 2 days ({target_date}). "
+              f"The water flow forecast is {forecast_flow} m³/s. Use surf slang and dinosaur emojis like 🦖. No hashtags.")
+    
+    models = ['gemini-1.5-flash', 'gemini-1.5-flash-8b', 'gemini-1.5-pro']
+    
+    for m in models:
+        try:
+            model = genai.GenerativeModel(m)
+            return model.generate_content(prompt).text.strip()
+        except Exception:
+            continue
+            
+    return fallback_msg
 
 def send_telegram_message(chat_id, text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
