@@ -10,7 +10,6 @@ from datetime import datetime, timedelta
 import time
 import os
 
-# Sentence case and new name
 st.set_page_config(page_title="River Currentson, your surf agent", page_icon="🦖", layout="wide")
 
 DB_URL = st.secrets.get("DATABASE_URL", "")
@@ -143,7 +142,6 @@ def start_chatbot():
             session.close()
 
             if GEMINI_API_KEY:
-                # Tell the bot who he is!
                 prompt = (f"You are a stoked river surfer AI assistant named River Currentson. A friend named '{user.name}' texted you: '{message.text}'\n\n"
                           f"Live river flow data:\n{raw_data}\n\n"
                           f"Reply naturally using this data. Use surf slang and dinosaur/surf emojis (like 🦖). Keep under 4 sentences.")
@@ -170,13 +168,12 @@ def start_chatbot():
 
     threading.Thread(target=run_polling, daemon=True).start()
 
-# We still start the bot in the background, but we don't save or print the status!
+# We still start the bot silently in the background!
 start_chatbot()
 
 # --- STREAMLIT UI ---
-# Magic Image Loader
+# Magic Image Loader: Uses the image if you uploaded it, falls back to emoji if you didn't
 if os.path.exists("trex.png"):
-    # Using columns to align the image and title nicely side-by-side
     col_img, col_title = st.columns([1, 8])
     with col_img:
         st.image("trex.png", use_container_width=True)
