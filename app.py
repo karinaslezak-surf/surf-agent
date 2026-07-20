@@ -7,14 +7,16 @@ import requests
 import telebot
 import google.generativeai as genai
 from datetime import datetime, timedelta
+import time
 
 st.set_page_config(page_title="River Surf Agent", page_icon="🏄‍♂️", layout="wide")
 
-DB_URL = st.secrets["DATABASE_URL"]
+DB_URL = st.secrets.get("DATABASE_URL", "")
 if DB_URL.startswith("postgres://"):
     DB_URL = DB_URL.replace("postgres://", "postgresql://", 1)
 
-engine = create_engine(DB_URL)
+# STABILITY FIX 1: pool_pre_ping=True stops the database from crashing the app when it wakes up from sleep!
+engine = create_engine(DB_URL, pool_pre_ping=True)
 Base = declarative_base()
 
 class Spot(Base):
@@ -53,9 +55,12 @@ init_db()
 TELEGRAM_TOKEN = st.secrets.get("TELEGRAM_TOKEN")
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY")
 
+# --- BULLETPROOF CHATBOT BRAIN ---
 @st.cache_resource
 def start_chatbot():
-    if not TELEGRAM_TOKEN: return False
+    if not TELEGRAM_TOKEN:
+        return "🔴 Offline: Missing TELEGRAM_TOKEN"
+        
     bot = telebot.TeleBot(TELEGRAM_TOKEN)
     
     if GEMINI_API_KEY:
@@ -64,85 +69,108 @@ def start_chatbot():
     else:
         model = None
 
+    # ADDED: A command just to test if the bot is awake
+    @bot.message_handler(commands=['start', 'help'])
+    def send_welcome(message):
+        bot.reply_to(message, "Yeww! 🤙 The Surf Agent is online. Text me anything to check the waves!")
+
     @bot.message_handler(func=lambda message: True)
     def handle_message(message):
-        session = SessionLocal()
-        user = session.query(User).filter_by(telegram_chat_id=str(message.chat.id)).first()
-        if not user:
-            bot.reply_to(message, "Whoa there! 🛑 You aren't on the VIP list. Subscribe on the app first!")
+        try:
+            # INSTANT FEEDBACK: Trigger the typing animation immediately!
+            bot.send_chat_action(message.chat.id, 'typing')
+            
+            session = SessionLocal()
+            chat_id = str(message.chat.id).strip()
+            user = session.query(User).filter_by(telegram_chat_id=chat_id).first()
+            
+            if not user:
+                bot.reply_to(message, f"🛑 Whoa there! Your Chat ID is {chat_id}, but you aren't on the VIP list. Subscribe on the app first!")
+                session.close()
+                return
+
+            spots = session.query(Spot).all()
+            today_date = datetime.utcnow().strftime("%Y-%m-%d")
+            target_date = (datetime.utcnow() + timedelta(days=2)).strftime("%Y-%m-%d")
+            
+            raw_data = ""
+            for spot in spots:
+                offsets = [0, 0.02, -0.02, 0.04, -0.04]
+                lats, lons = [], []
+                for d_lat in offsets:
+                    for d_lon in offsets:
+                        lats.append(str(round(spot.latitude + d_lat, 4)))
+                        lons.append(str(round(spot.longitude + d_lon, 4)))
+                
+                api_url = f"https://flood-api.open-meteo.com/v1/flood?latitude={','.join(lats)}&longitude={','.join(lons)}&daily=river_discharge"
+                
+                try:
+                    resp = requests.get(api_url, timeout=10).json()
+                    if not isinstance(resp, list):
+                        if 'error' in resp: continue
+                        resp = [resp]
+                    
+                    best_today, best_future = -1, -1
+                    for loc in resp:
+                        dates = loc.get('daily', {}).get('time', [])
+                        discharges = loc.get('daily', {}).get('river_discharge', [])
+                        if today_date in dates and target_date in dates:
+                            try:
+                                t_flow = discharges[dates.index(today_date)]
+                                f_flow = discharges[dates.index(target_date)]
+                                if t_flow is not None and t_flow > best_today:
+                                    best_today = t_flow
+                                    best_future = f_flow if f_flow is not None else 0
+                            except ValueError:
+                                pass
+                    
+                    t_str = round(best_today, 1) if best_today != -1 else "N/A"
+                    f_str = round(best_future, 1) if best_future != -1 else "N/A"
+                    raw_data += f"- {spot.name}: {t_str} m³/s today, {f_str} m³/s in 2 days. (Ideal is {spot.min_flow}-{spot.max_flow})\n"
+                except Exception:
+                    pass
             session.close()
-            return
 
-        bot.send_chat_action(message.chat.id, 'typing')
-        spots = session.query(Spot).all()
-        today_date = datetime.utcnow().strftime("%Y-%m-%d")
-        target_date = (datetime.utcnow() + timedelta(days=2)).strftime("%Y-%m-%d")
-        
-        raw_data = ""
-        for spot in spots:
-            # RADAR SWEEP FIX
-            offsets = [0, 0.02, -0.02, 0.04, -0.04]
-            lats, lons = [], []
-            for d_lat in offsets:
-                for d_lon in offsets:
-                    lats.append(str(round(spot.latitude + d_lat, 4)))
-                    lons.append(str(round(spot.longitude + d_lon, 4)))
-            
-            api_url = f"https://flood-api.open-meteo.com/v1/flood?latitude={','.join(lats)}&longitude={','.join(lons)}&daily=river_discharge"
-            
-            try:
-                resp = requests.get(api_url).json()
-                if not isinstance(resp, list):
-                    if 'error' in resp:
-                        continue
-                    resp = [resp]
-                
-                best_today, best_future = -1, -1
-                for loc in resp:
-                    dates = loc.get('daily', {}).get('time', [])
-                    discharges = loc.get('daily', {}).get('river_discharge', [])
-                    if today_date in dates and target_date in dates:
-                        try:
-                            idx_today = dates.index(today_date)
-                            idx_future = dates.index(target_date)
-                            t_flow = discharges[idx_today]
-                            f_flow = discharges[idx_future]
-                            
-                            # Find the massive river volume, ignore the dirt/rain runoff!
-                            if t_flow is not None and t_flow > best_today:
-                                best_today = t_flow
-                                best_future = f_flow if f_flow is not None else 0
-                        except ValueError:
-                            pass
-                
-                t_str = round(best_today, 1) if best_today != -1 else "N/A"
-                f_str = round(best_future, 1) if best_future != -1 else "N/A"
-                raw_data += f"- {spot.name}: {t_str} m³/s today, {f_str} m³/s in 2 days. (Ideal is {spot.min_flow}-{spot.max_flow})\n"
-            except Exception:
-                pass
-        session.close()
-
-        if model:
-            prompt = (f"You are a stoked river surfer AI assistant. A friend named '{user.name}' texted you: '{message.text}'\n\n"
-                      f"Live river flow data:\n{raw_data}\n\n"
-                      f"Reply naturally using this data. Use surf slang and emojis. Keep under 4 sentences.")
-            try:
+            if model:
+                prompt = (f"You are a stoked river surfer AI assistant. A friend named '{user.name}' texted you: '{message.text}'\n\n"
+                          f"Live river flow data:\n{raw_data}\n\n"
+                          f"Reply naturally using this data. Use surf slang and emojis. Keep under 4 sentences.")
                 bot.reply_to(message, model.generate_content(prompt).text.strip())
-            except Exception:
-                bot.reply_to(message, f"Brain glitch! Raw stats:\n{raw_data}")
-        else:
-            bot.reply_to(message, f"Raw stats:\n{raw_data}")
+            else:
+                bot.reply_to(message, f"Raw stats:\n{raw_data}")
+        
+        except Exception as e:
+            # STABILITY FIX 2: It will never fail silently again. It tells you why it broke!
+            try: bot.reply_to(message, f"🤖 Oops! Brain glitch! Error: {str(e)}")
+            except: pass
 
     def run_polling():
-        try: bot.infinity_polling(skip_pending=True)
-        except Exception: pass
+        try:
+            bot.remove_webhook() # Clears out "Ghost Bots" that block Telegram
+        except Exception:
+            pass
+            
+        # STABILITY FIX 3: Infinite Auto-Restart Loop prevents silent death
+        while True:
+            try:
+                bot.infinity_polling(skip_pending=True)
+            except Exception:
+                time.sleep(3)
 
     threading.Thread(target=run_polling, daemon=True).start()
-    return True
+    return "🟢 AI Chatbot is Online and Listening!"
 
-start_chatbot()
+bot_status = start_chatbot()
 
+# --- STREAMLIT UI ---
 st.title("🏄‍♂️ River Surf Agent")
+
+# Visual Indicator for the Bot!
+if "🟢" in bot_status:
+    st.success(f"**Status:** {bot_status}")
+else:
+    st.error(f"**Status:** {bot_status}")
+
 st.write("This agent checks the 48-hour forecast and alerts you when spots are firing.")
 
 session = SessionLocal()
@@ -174,10 +202,11 @@ with col2:
     st.subheader("📱 Get Surf Alerts")
     with st.form("add_user"):
         u_name = st.text_input("Your Name")
-        u_chat_id = st.text_input("Telegram Chat ID", placeholder="e.g. 123456789", help="1. Open Telegram\n2. Search @userinfobot\n3. Click Start\n4. Copy ID here.")
+        u_chat_id = st.text_input("Telegram Chat ID", placeholder="e.g. 123456789")
         if st.form_submit_button("Subscribe") and u_name and u_chat_id:
             try:
-                session.add(User(name=u_name, telegram_chat_id=u_chat_id))
+                # STRIP FIX: Remove accidental spaces if someone copied their ID weirdly
+                session.add(User(name=u_name, telegram_chat_id=u_chat_id.strip()))
                 session.commit()
                 st.success("You are on the list! Go to Telegram, search for our bot, and click 'Start'.")
             except Exception:
