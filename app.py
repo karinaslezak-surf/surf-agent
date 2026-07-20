@@ -71,26 +71,36 @@ if GEMINI_API_KEY:
 def generate_ai_reply(prompt_text):
     if not GEMINI_API_KEY: return None
     
-    # FIX 1: Disable overprotective safety filters so surf slang doesn't crash the bot
-    safety_settings = [
-        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-    ]
+    # MAGIC FINDER: Ask Google what models you actually have access to!
+    try:
+        available = [m.name.replace('models/', '') for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+    except Exception:
+        available = ['gemini-1.5-flash', 'gemini-1.5-flash-8b']
+        
+    if not available:
+        available = ['gemini-1.5-flash']
+        
+    # Sort them so the fastest 'flash' models are tried first
+    models_to_try = [m for m in available if 'flash' in m] + [m for m in available if 'flash' not in m]
     
-    fallback_models = ['gemini-1.5-flash', 'gemini-1.5-flash-8b', 'gemini-1.5-pro']
-    last_error = ""
-    
-    for m_name in fallback_models:
+    errors = []
+    # Try the top 3 allowed models
+    for m_name in models_to_try[:3]:
         try:
             model = genai.GenerativeModel(m_name)
-            return model.generate_content(prompt_text, safety_settings=safety_settings).text.strip()
+            response = model.generate_content(prompt_text)
+            try:
+                return response.text.strip()
+            except ValueError:
+                # This catches the error if Google's safety filters blocked the response!
+                errors.append(f"[{m_name}: Blocked by safety filters]")
+                continue
         except Exception as e:
-            last_error = str(e)
+            err_msg = str(e).split('\n')[0][:60]
+            errors.append(f"[{m_name}: {err_msg}]")
             continue 
             
-    raise Exception(f"All Google AI models failed. Last error: {last_error}")
+    raise Exception(f"{' | '.join(errors)}")
 
 @st.cache_resource
 def start_chatbot():
@@ -101,7 +111,7 @@ def start_chatbot():
 
     @bot.message_handler(commands=['start', 'help'])
     def send_welcome(message):
-        bot.reply_to(message, "Yeww! 🤙 Hi, I'm River. River Currentson, your surf agent. Text me anytime to check the waves!")
+        bot.reply_to(message, "Hi, I'm River Currentson. Your personal AI surf agent. Text me anytime to check the waves!")
 
     @bot.message_handler(func=lambda message: True)
     def handle_message(message):
@@ -168,8 +178,8 @@ def start_chatbot():
                     ai_response = generate_ai_reply(prompt)
                     bot.reply_to(message, ai_response)
                 except Exception as ai_e:
-                    # FIX 2: Print the exact error so we can debug it if Google fails again!
-                    bot.reply_to(message, f"Raw stats (AI Error: {str(ai_e)[:150]}):\n{raw_data}")
+                    # Now it will print EXACTLY what happened to every single model we tried!
+                    bot.reply_to(message, f"Raw stats (AI Error: {str(ai_e)}):\n{raw_data}")
             else:
                 bot.reply_to(message, f"Raw stats:\n{raw_data}")
         
@@ -197,13 +207,13 @@ if os.path.exists("trex.png"):
         f'''
         <div style="display: flex; align-items: center; margin-bottom: 20px;">
             <img src="data:image/png;base64,{encoded_string}" style="height: 2.2rem; width: auto; margin-right: 15px;">
-            <h1 style="margin: 0; padding: 0;">Yeww! 🤙 Hi, I'm River. River Currentson, your surf agent.</h1>
+            <h1 style="margin: 0; padding: 0;">Hi, I'm River Currentson, your surf agent.</h1>
         </div>
         ''', 
         unsafe_allow_html=True
     )
 else:
-    st.title("🦖 Yeww! 🤙 Hi, I'm River. River Currentson, your surf agent.")
+    st.title("🦖 Hi, I'm River Currentson, your surf agent.")
 
 st.write("I monitor the 48-hour forecasts and notify you when the local spots reach perfect flow.")
 
