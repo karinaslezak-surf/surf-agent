@@ -40,9 +40,9 @@ def get_ai_surf_message(spot_name, target_date, forecast_flow):
     if not GEMINI_API_KEY:
         return fallback_msg
         
-    prompt = (f"Act as a stoked river surfer named River Currentson. Write a short, funny text (under 3 sentences) to my friends "
+    prompt = (f"Act as a helpful and reliable river surfer named River Currentson. Write a short text (under 3 sentences) to my friends "
               f"telling them the river wave at {spot_name} is pumping in 2 days ({target_date}). "
-              f"The water flow forecast is {forecast_flow} m³/s. Use surf slang and dinosaur emojis like 🦖. No hashtags.")
+              f"The water flow forecast is {forecast_flow} m³/s. Be friendly and natural, you can use a dinosaur or surf emoji. No hashtags.")
     
     models = ['gemini-1.5-flash', 'gemini-1.5-flash-8b', 'gemini-1.5-pro']
     
