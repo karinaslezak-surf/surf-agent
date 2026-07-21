@@ -5,7 +5,7 @@ import pandas as pd
 import threading
 import requests
 import telebot
-import google.generativeai as genai
+import anthropic
 from datetime import datetime, timedelta
 import time
 import os
@@ -54,7 +54,7 @@ def init_db():
 init_db()
 
 TELEGRAM_TOKEN = st.secrets.get("TELEGRAM_TOKEN")
-GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY")
+ANTHROPIC_API_KEY = st.secrets.get("ANTHROPIC_API_KEY")
 
 bot_username = ""
 if TELEGRAM_TOKEN:
@@ -65,43 +65,24 @@ if TELEGRAM_TOKEN:
     except Exception:
         pass
 
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
+# Initialize Claude's Brain!
+claude_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
 
 def generate_ai_reply(prompt_text):
-    if not GEMINI_API_KEY: return None
+    if not claude_client: return None
     
-    # FIX: We now strictly use the 2.0 model which we know your key has access to!
-    safe_models = ['gemini-2.0-flash']
-    
-    safety_settings = [
-        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-    ]
-    
-    errors = []
-    for m_name in safe_models:
-        try:
-            model = genai.GenerativeModel(m_name)
-            response = model.generate_content(prompt_text, safety_settings=safety_settings)
-            try:
-                return response.text.strip()
-            except ValueError:
-                errors.append(f"[{m_name}: Blocked by safety filters]")
-                continue
-        except Exception as e:
-            err_msg = str(e).lower()
-            # SMART DETECTOR: If you hit the speed limit, stop instantly so you don't get blocked!
-            if "429" in err_msg or "quota" in err_msg:
-                raise Exception("Whoa! Google AI speed limit reached. Give me 60 seconds to catch my breath! 🏄‍♂️")
-            
-            err_short = str(e).split('\n')[0][:60]
-            errors.append(f"[{m_name}: {err_short}]")
-            continue 
-            
-    raise Exception(f"{' | '.join(errors)}")
+    try:
+        response = claude_client.messages.create(
+            model="claude-3-haiku-20240307",
+            max_tokens=150,
+            temperature=0.7,
+            messages=[
+                {"role": "user", "content": prompt_text}
+            ]
+        )
+        return response.content[0].text.strip()
+    except Exception as e:
+        raise Exception(f"Claude API Error: {str(e)}")
 
 @st.cache_resource
 def start_chatbot():
@@ -112,7 +93,7 @@ def start_chatbot():
 
     @bot.message_handler(commands=['start', 'help'])
     def send_welcome(message):
-        bot.reply_to(message, "Hi, I'm River Currentson. Your personal AI surf agent. Text me anytime to check the waves!")
+        bot.reply_to(message, "Yeww! 🤙 Hi, I'm River. River Currentson, your surf agent. Text me anytime to check the waves!")
 
     @bot.message_handler(func=lambda message: True)
     def handle_message(message):
@@ -133,6 +114,8 @@ def start_chatbot():
             target_date = (datetime.utcnow() + timedelta(days=2)).strftime("%Y-%m-%d")
             
             raw_data = ""
+            backup_msg = "🌊 **River Currentson's Radar Report:**\n\n"
+            
             for spot in spots:
                 offsets = [0, 0.02, -0.02, 0.04, -0.04]
                 lats, lons = [], []
@@ -165,12 +148,16 @@ def start_chatbot():
                     
                     t_str = round(best_today, 1) if best_today != -1 else "N/A"
                     f_str = round(best_future, 1) if best_future != -1 else "N/A"
+                    
                     raw_data += f"- {spot.name}: {t_str} m³/s today, {f_str} m³/s in 2 days. (Ideal is {spot.min_flow}-{spot.max_flow})\n"
+                    
+                    is_good = "🟢" if (best_future != -1 and spot.min_flow <= best_future <= spot.max_flow) else "🔴"
+                    backup_msg += f"{is_good} **{spot.name}**\nToday: {t_str} m³/s | In 2 Days: {f_str} m³/s\n*(Ideal: {spot.min_flow}-{spot.max_flow})*\n\n"
                 except Exception:
                     pass
             session.close()
 
-            if GEMINI_API_KEY:
+            if ANTHROPIC_API_KEY:
                 prompt = (f"Act as River Currentson, a knowledgeable and laid-back river surf agent. A friend named '{user.name}' texted you: '{message.text}'\n\n"
                           f"Live river flow data:\n{raw_data}\n\n"
                           f"Reply naturally using this data. Be helpful and reliable. Use a surf or dinosaur emoji occasionally. Keep it under 4 sentences.")
@@ -179,17 +166,13 @@ def start_chatbot():
                     ai_response = generate_ai_reply(prompt)
                     bot.reply_to(message, ai_response)
                 except Exception as ai_e:
-                    # Special catch for our speed limit message!
-                    if "speed limit" in str(ai_e):
-                        bot.reply_to(message, str(ai_e))
-                    else:
-                        bot.reply_to(message, f"Raw stats (AI Error: {str(ai_e)}):\n{raw_data}")
+                    # If Claude crashes for any reason, print the error and send the beautiful Markdown format fallback
+                    bot.reply_to(message, f"Raw stats (AI Error: {str(ai_e)[:100]}...):\n\n{backup_msg}", parse_mode="Markdown")
             else:
-                bot.reply_to(message, f"Raw stats:\n{raw_data}")
+                bot.reply_to(message, backup_msg, parse_mode="Markdown")
         
-        except Exception as e:
-            try: bot.reply_to(message, f"🤖 Oops! Core bot glitch! Error: {str(e)}")
-            except: pass
+        except Exception:
+            pass
 
     def run_polling():
         try: bot.remove_webhook() 
@@ -211,13 +194,13 @@ if os.path.exists("trex.png"):
         f'''
         <div style="display: flex; align-items: center; margin-bottom: 20px;">
             <img src="data:image/png;base64,{encoded_string}" style="height: 2.2rem; width: auto; margin-right: 15px;">
-            <h1 style="margin: 0; padding: 0;">Hi, I'm River Currentson, your surf agent.</h1>
+            <h1 style="margin: 0; padding: 0;">Yeww! 🤙 Hi, I'm River. River Currentson, your surf agent.</h1>
         </div>
         ''', 
         unsafe_allow_html=True
     )
 else:
-    st.title("🦖 Hi, I'm River Currentson, your surf agent.")
+    st.title("🦖 Yeww! 🤙 Hi, I'm River. River Currentson, your surf agent.")
 
 st.write("I monitor the 48-hour forecasts and notify you when the local spots reach perfect flow.")
 
