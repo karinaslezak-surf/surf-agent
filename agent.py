@@ -44,7 +44,8 @@ def get_ai_surf_message(spot_name, target_date, forecast_flow):
               f"telling them the river wave at {spot_name} is pumping in 2 days ({target_date}). "
               f"The water flow forecast is {forecast_flow} m³/s. Be friendly and natural, use a dinosaur or surf emoji. No hashtags.")
     
-    safe_models = ['gemini-1.5-flash', 'gemini-1.5-flash-8b']
+    # FIX: Hardcoded to your specific 2.0 model
+    safe_models = ['gemini-2.0-flash']
     
     safety_settings = [
         {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
