@@ -37,10 +37,10 @@ else:
 
 def get_ai_surf_message(spot_name, target_date, forecast_flow, min_flow, max_flow):
     fallback_msg = (f"Hi, River Currentson here. Surf alert! 🌊\n\n"
-                    f"🟢 **{spot_name}** is looking perfect in 2 days!\n"
-                    f"📅 Date: {target_date}\n"
-                    f"🌊 Forecast: **{forecast_flow} m³/s**\n"
-                    f"*(Ideal is {min_flow}-{max_flow})*\n\n"
+                    f"🟢 {spot_name.upper()} is looking perfect in 2 days!\n"
+                    f"Date: {target_date}\n"
+                    f"Forecast: {forecast_flow} m³/s\n"
+                    f"(Ideal is {min_flow} to {max_flow})\n\n"
                     f"Pack your gear!")
     
     if not claude_client:
@@ -65,7 +65,7 @@ def get_ai_surf_message(spot_name, target_date, forecast_flow, min_flow, max_flo
 
 def send_telegram_message(chat_id, text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    requests.post(url, json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"})
+    requests.post(url, json={"chat_id": chat_id, "text": text})
 
 def run_agent():
     if not DB_URL or not TELEGRAM_TOKEN:
