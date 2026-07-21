@@ -1,6 +1,6 @@
 import os
 import requests
-import google.generativeai as genai
+import anthropic
 from sqlalchemy import create_engine, Column, Integer, String, Float
 from sqlalchemy.orm import declarative_base, sessionmaker
 from datetime import datetime, timedelta
@@ -10,7 +10,7 @@ if DB_URL and DB_URL.startswith("postgres://"):
     DB_URL = DB_URL.replace("postgres://", "postgresql://", 1)
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 
 engine = create_engine(DB_URL)
 Base = declarative_base()
@@ -30,46 +30,42 @@ class User(Base):
     name = Column(String)
     telegram_chat_id = Column(String, unique=True)
 
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
+if ANTHROPIC_API_KEY:
+    claude_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+else:
+    claude_client = None
 
-def get_ai_surf_message(spot_name, target_date, forecast_flow):
-    fallback_msg = (f"Hi, I'm River Currentson. Surf alert!\n\n*{spot_name}* is looking perfect in 2 days!\n"
-                    f"Date: {target_date}\nForecast: {forecast_flow} m³/s\n\nPack your gear!")
+def get_ai_surf_message(spot_name, target_date, forecast_flow, min_flow, max_flow):
+    fallback_msg = (f"Hi, River Currentson here. Surf alert! 🌊\n\n"
+                    f"🟢 **{spot_name}** is looking perfect in 2 days!\n"
+                    f"📅 Date: {target_date}\n"
+                    f"🌊 Forecast: **{forecast_flow} m³/s**\n"
+                    f"*(Ideal is {min_flow}-{max_flow})*\n\n"
+                    f"Pack your gear!")
     
-    if not GEMINI_API_KEY:
+    if not claude_client:
         return fallback_msg
         
     prompt = (f"Act as River Currentson, a knowledgeable and laid-back river surf agent. Write a short text (under 3 sentences) to my friends "
               f"telling them the river wave at {spot_name} is pumping in 2 days ({target_date}). "
               f"The water flow forecast is {forecast_flow} m³/s. Be friendly and natural, use a dinosaur or surf emoji. No hashtags.")
     
-    # FIX: Hardcoded to your specific 2.0 model
-    safe_models = ['gemini-2.0-flash']
-    
-    safety_settings = [
-        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-    ]
-    
-    for m_name in safe_models:
-        try:
-            model = genai.GenerativeModel(m_name)
-            response = model.generate_content(prompt, safety_settings=safety_settings)
-            try:
-                return response.text.strip()
-            except ValueError:
-                continue
-        except Exception:
-            continue
-            
-    return fallback_msg
+    try:
+        response = claude_client.messages.create(
+            model="claude-3-haiku-20240307",
+            max_tokens=150,
+            temperature=0.7,
+            messages=[
+                {"role": "user", "content": prompt}
+            ]
+        )
+        return response.content[0].text.strip()
+    except Exception:
+        return fallback_msg
 
 def send_telegram_message(chat_id, text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    requests.post(url, json={"chat_id": chat_id, "text": text})
+    requests.post(url, json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"})
 
 def run_agent():
     if not DB_URL or not TELEGRAM_TOKEN:
@@ -118,7 +114,7 @@ def run_agent():
                         pass
                         
             if best_flow != -1 and spot.min_flow <= best_flow <= spot.max_flow:
-                msg = get_ai_surf_message(spot.name, target_date, round(best_flow, 1))
+                msg = get_ai_surf_message(spot.name, target_date, round(best_flow, 1), spot.min_flow, spot.max_flow)
                 for user in users:
                     send_telegram_message(user.telegram_chat_id, msg)
         except Exception:
