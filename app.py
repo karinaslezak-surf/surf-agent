@@ -65,7 +65,6 @@ if TELEGRAM_TOKEN:
     except Exception:
         pass
 
-# Initialize Claude's Brain!
 claude_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
 
 def generate_ai_reply(prompt_text):
@@ -114,7 +113,9 @@ def start_chatbot():
             target_date = (datetime.utcnow() + timedelta(days=2)).strftime("%Y-%m-%d")
             
             raw_data = ""
-            backup_msg = "🌊 **River Currentson's Radar Report:**\n\n"
+            
+            # FIX: Removed strict Markdown that crashes Telegram!
+            backup_msg = "🌊 River Currentson's Radar Report:\n\n"
             
             for spot in spots:
                 offsets = [0, 0.02, -0.02, 0.04, -0.04]
@@ -152,7 +153,7 @@ def start_chatbot():
                     raw_data += f"- {spot.name}: {t_str} m³/s today, {f_str} m³/s in 2 days. (Ideal is {spot.min_flow}-{spot.max_flow})\n"
                     
                     is_good = "🟢" if (best_future != -1 and spot.min_flow <= best_future <= spot.max_flow) else "🔴"
-                    backup_msg += f"{is_good} **{spot.name}**\nToday: {t_str} m³/s | In 2 Days: {f_str} m³/s\n*(Ideal: {spot.min_flow}-{spot.max_flow})*\n\n"
+                    backup_msg += f"{is_good} {spot.name}\nToday: {t_str} m³/s | In 2 Days: {f_str} m³/s\n(Ideal: {spot.min_flow} to {spot.max_flow})\n\n"
                 except Exception:
                     pass
             session.close()
@@ -166,16 +167,20 @@ def start_chatbot():
                     ai_response = generate_ai_reply(prompt)
                     bot.reply_to(message, ai_response)
                 except Exception as ai_e:
-                    # If Claude crashes for any reason, print the error and send the beautiful Markdown format fallback
-                    bot.reply_to(message, f"Raw stats (AI Error: {str(ai_e)[:100]}...):\n\n{backup_msg}", parse_mode="Markdown")
+                    # Fallback sent as plain text to guarantee delivery, stripping out bad formatting characters
+                    safe_error = str(ai_e).replace('*', '').replace('_', '').replace('[', '').replace(']', '')
+                    bot.reply_to(message, f"🤖 AI Error: {safe_error[:150]}...\n\n{backup_msg}")
             else:
-                bot.reply_to(message, backup_msg, parse_mode="Markdown")
+                bot.reply_to(message, backup_msg)
         
-        except Exception:
-            pass
+        except Exception as e:
+            try: bot.reply_to(message, f"🤖 Oops! Core bot glitch! Error: {str(e)[:150]}")
+            except: pass
 
     def run_polling():
-        try: bot.remove_webhook() 
+        try: 
+            bot.remove_webhook()
+            time.sleep(1)
         except Exception: pass
             
         while True:
@@ -190,17 +195,18 @@ start_chatbot()
 if os.path.exists("trex.png"):
     with open("trex.png", "rb") as image_file:
         encoded_string = base64.b64encode(image_file.read()).decode()
+    # FIX: Increased image height to 80px to make the Dino MUCH bigger
     st.markdown(
         f'''
         <div style="display: flex; align-items: center; margin-bottom: 20px;">
-            <img src="data:image/png;base64,{encoded_string}" style="height: 2.2rem; width: auto; margin-right: 15px;">
-            <h1 style="margin: 0; padding: 0;">Yeww! 🤙 Hi, I'm River. River Currentson, your surf agent.</h1>
+            <img src="data:image/png;base64,{encoded_string}" style="height: 80px; width: auto; margin-right: 20px;">
+            <h1 style="margin: 0; padding: 0;">Hi, I'm River Currentson, your surf agent.</h1>
         </div>
         ''', 
         unsafe_allow_html=True
     )
 else:
-    st.title("🦖 Yeww! 🤙 Hi, I'm River. River Currentson, your surf agent.")
+    st.title("🦖 Hi, I'm River Currentson, your surf agent.")
 
 st.write("I monitor the 48-hour forecasts and notify you when the local spots reach perfect flow.")
 
