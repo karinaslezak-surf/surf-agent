@@ -53,8 +53,8 @@ def init_db():
 
 init_db()
 
-TELEGRAM_TOKEN = st.secrets.get("TELEGRAM_TOKEN")
-ANTHROPIC_API_KEY = st.secrets.get("ANTHROPIC_API_KEY")
+TELEGRAM_TOKEN = st.secrets.get("TELEGRAM_TOKEN", "").strip()
+ANTHROPIC_API_KEY = st.secrets.get("ANTHROPIC_API_KEY", "").strip()
 
 bot_username = ""
 if TELEGRAM_TOKEN:
@@ -65,19 +65,17 @@ if TELEGRAM_TOKEN:
     except Exception:
         pass
 
+# Initialize CLAUDE!
 claude_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
 
 def generate_ai_reply(prompt_text):
     if not claude_client: return None
-    
     try:
         response = claude_client.messages.create(
             model="claude-3-haiku-20240307",
             max_tokens=150,
             temperature=0.7,
-            messages=[
-                {"role": "user", "content": prompt_text}
-            ]
+            messages=[{"role": "user", "content": prompt_text}]
         )
         return response.content[0].text.strip()
     except Exception as e:
@@ -88,16 +86,26 @@ def start_chatbot():
     if not TELEGRAM_TOKEN:
         return
         
+    # FORCE CLEAR: Delete any stuck ghost bots on Telegram's side before starting
+    try:
+        requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook?drop_pending_updates=True", timeout=5)
+    except:
+        pass
+
     bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
     @bot.message_handler(commands=['start', 'help'])
     def send_welcome(message):
+        try: bot.send_chat_action(message.chat.id, 'typing')
+        except: pass
         bot.reply_to(message, "Yeww! 🤙 Hi, I'm River. River Currentson, your surf agent. Text me anytime to check the waves!")
 
     @bot.message_handler(func=lambda message: True)
     def handle_message(message):
         try:
-            bot.send_chat_action(message.chat.id, 'typing')
+            # Safe typing indicator (won't crash if Telegram lags)
+            try: bot.send_chat_action(message.chat.id, 'typing')
+            except: pass
             
             session = SessionLocal()
             chat_id = str(message.chat.id).strip()
@@ -108,13 +116,15 @@ def start_chatbot():
                 session.close()
                 return
 
+            # --- INSTANT FEEDBACK ---
+            # Instantly tells the user we received the message!
+            status_msg = bot.reply_to(message, "🏄‍♂️ Paddling out to check the radar...")
+
             spots = session.query(Spot).all()
             today_date = datetime.utcnow().strftime("%Y-%m-%d")
             target_date = (datetime.utcnow() + timedelta(days=2)).strftime("%Y-%m-%d")
             
             raw_data = ""
-            
-            # FIX: Removed strict Markdown that crashes Telegram!
             backup_msg = "🌊 River Currentson's Radar Report:\n\n"
             
             for spot in spots:
@@ -158,6 +168,7 @@ def start_chatbot():
                     pass
             session.close()
 
+            final_text = backup_msg
             if ANTHROPIC_API_KEY:
                 prompt = (f"Act as River Currentson, a knowledgeable and laid-back river surf agent. A friend named '{user.name}' texted you: '{message.text}'\n\n"
                           f"Live river flow data:\n{raw_data}\n\n"
@@ -165,27 +176,29 @@ def start_chatbot():
                 
                 try:
                     ai_response = generate_ai_reply(prompt)
-                    bot.reply_to(message, ai_response)
+                    if ai_response:
+                        final_text = ai_response
                 except Exception as ai_e:
-                    # Fallback sent as plain text to guarantee delivery, stripping out bad formatting characters
                     safe_error = str(ai_e).replace('*', '').replace('_', '').replace('[', '').replace(']', '')
-                    bot.reply_to(message, f"🤖 AI Error: {safe_error[:150]}...\n\n{backup_msg}")
-            else:
-                bot.reply_to(message, backup_msg)
+                    final_text = f"🤖 AI Error: {safe_error[:150]}...\n\n{backup_msg}"
+            
+            # --- THE MAGIC TRICK ---
+            # It replaces the "Paddling out" message with the final answer
+            try:
+                bot.edit_message_text(chat_id=message.chat.id, message_id=status_msg.message_id, text=final_text)
+            except Exception:
+                bot.reply_to(message, final_text)
         
         except Exception as e:
-            try: bot.reply_to(message, f"🤖 Oops! Core bot glitch! Error: {str(e)[:150]}")
-            except: pass
+            pass
 
     def run_polling():
-        try: 
-            bot.remove_webhook()
-            time.sleep(1)
-        except Exception: pass
-            
         while True:
-            try: bot.infinity_polling(skip_pending=True)
-            except Exception: time.sleep(3)
+            try: 
+                # skip_pending=False makes sure he answers every message you send
+                bot.infinity_polling(skip_pending=False)
+            except Exception: 
+                time.sleep(3)
 
     threading.Thread(target=run_polling, daemon=True).start()
 
@@ -195,11 +208,11 @@ start_chatbot()
 if os.path.exists("trex.png"):
     with open("trex.png", "rb") as image_file:
         encoded_string = base64.b64encode(image_file.read()).decode()
-    # FIX: Increased image height to 80px to make the Dino MUCH bigger
+    # MASSIVE DINO: Increased height to 100px!
     st.markdown(
         f'''
         <div style="display: flex; align-items: center; margin-bottom: 20px;">
-            <img src="data:image/png;base64,{encoded_string}" style="height: 80px; width: auto; margin-right: 20px;">
+            <img src="data:image/png;base64,{encoded_string}" style="height: 100px; width: auto; margin-right: 20px;">
             <h1 style="margin: 0; padding: 0;">Hi, I'm River Currentson, your surf agent.</h1>
         </div>
         ''', 
@@ -261,7 +274,28 @@ with col2:
                 
     if bot_username:
         st.info(f"💡 **Want instant updates?** Once you subscribe, you can click here to message [**@{bot_username}**](https://t.me/{bot_username}) anytime and ask *'How are the waves?'*")
-    else:
-        st.info("💡 **Want instant updates?** Once you subscribe, you can message the bot on Telegram anytime and ask *'How are the waves?'*")
+
+# --- DIAGNOSTICS BUTTONS ---
+st.divider()
+st.subheader("🧪 Diagnostics: System Check")
+colA, colB = st.columns(2)
+with colA:
+    if st.button("1. Test Claude AI Connection"):
+        try:
+            if ANTHROPIC_API_KEY:
+                test_reply = generate_ai_reply("Say: 'Yeww! The AI is working perfectly!'")
+                st.success(f"**AI says:** {test_reply}")
+            else:
+                st.error("No Anthropic API key found in Secrets.")
+        except Exception as e:
+            st.error(f"AI Error: {e}")
+
+with colB:
+    if st.button("2. Hard Reset Telegram Bot"):
+        try:
+            requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook?drop_pending_updates=true", timeout=5)
+            st.success("Telegram Memory Cleared! The bot is completely un-frozen. You can text him now.")
+        except Exception as e:
+            st.error(f"Telegram Error: {e}")
 
 session.close()
