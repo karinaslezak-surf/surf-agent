@@ -65,32 +65,43 @@ if TELEGRAM_TOKEN:
     except Exception:
         pass
 
-# Initialize CLAUDE!
 claude_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
 
 def generate_ai_reply(prompt_text):
     if not claude_client: return None
-    try:
-        response = claude_client.messages.create(
-            model="claude-3-haiku-20240307",
-            max_tokens=150,
-            temperature=0.7,
-            messages=[{"role": "user", "content": prompt_text}]
-        )
-        return response.content[0].text.strip()
-    except Exception as e:
-        raise Exception(f"Claude API Error: {str(e)}")
+    
+    # MAGIC CASCADE: Tries models in order until one works!
+    models_to_try = [
+        "claude-3-5-haiku-20241022",
+        "claude-3-5-haiku-latest",
+        "claude-3-5-sonnet-20241022",
+        "claude-3-5-sonnet-latest",
+        "claude-3-haiku-20240307"
+    ]
+    
+    last_error = ""
+    for m in models_to_try:
+        try:
+            response = claude_client.messages.create(
+                model=m,
+                max_tokens=150,
+                temperature=0.7,
+                messages=[{"role": "user", "content": prompt_text}]
+            )
+            return response.content[0].text.strip()
+        except Exception as e:
+            last_error = str(e).split('\n')[0]
+            continue # Try the next model!
+            
+    raise Exception(f"All Claude models failed. Last error: {last_error[:100]}...")
 
 @st.cache_resource
 def start_chatbot():
     if not TELEGRAM_TOKEN:
         return
         
-    # FORCE CLEAR: Delete any stuck ghost bots on Telegram's side before starting
-    try:
-        requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook?drop_pending_updates=True", timeout=5)
-    except:
-        pass
+    try: requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook?drop_pending_updates=True", timeout=5)
+    except: pass
 
     bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
@@ -103,7 +114,6 @@ def start_chatbot():
     @bot.message_handler(func=lambda message: True)
     def handle_message(message):
         try:
-            # Safe typing indicator (won't crash if Telegram lags)
             try: bot.send_chat_action(message.chat.id, 'typing')
             except: pass
             
@@ -116,8 +126,6 @@ def start_chatbot():
                 session.close()
                 return
 
-            # --- INSTANT FEEDBACK ---
-            # Instantly tells the user we received the message!
             status_msg = bot.reply_to(message, "🏄‍♂️ Paddling out to check the radar...")
 
             spots = session.query(Spot).all()
@@ -176,29 +184,21 @@ def start_chatbot():
                 
                 try:
                     ai_response = generate_ai_reply(prompt)
-                    if ai_response:
-                        final_text = ai_response
+                    if ai_response: final_text = ai_response
                 except Exception as ai_e:
                     safe_error = str(ai_e).replace('*', '').replace('_', '').replace('[', '').replace(']', '')
                     final_text = f"🤖 AI Error: {safe_error[:150]}...\n\n{backup_msg}"
             
-            # --- THE MAGIC TRICK ---
-            # It replaces the "Paddling out" message with the final answer
-            try:
-                bot.edit_message_text(chat_id=message.chat.id, message_id=status_msg.message_id, text=final_text)
-            except Exception:
-                bot.reply_to(message, final_text)
+            try: bot.edit_message_text(chat_id=message.chat.id, message_id=status_msg.message_id, text=final_text)
+            except: bot.reply_to(message, final_text)
         
-        except Exception as e:
+        except Exception:
             pass
 
     def run_polling():
         while True:
-            try: 
-                # skip_pending=False makes sure he answers every message you send
-                bot.infinity_polling(skip_pending=False)
-            except Exception: 
-                time.sleep(3)
+            try: bot.infinity_polling(skip_pending=False)
+            except Exception: time.sleep(3)
 
     threading.Thread(target=run_polling, daemon=True).start()
 
@@ -208,7 +208,6 @@ start_chatbot()
 if os.path.exists("trex.png"):
     with open("trex.png", "rb") as image_file:
         encoded_string = base64.b64encode(image_file.read()).decode()
-    # MASSIVE DINO: Increased height to 100px!
     st.markdown(
         f'''
         <div style="display: flex; align-items: center; margin-bottom: 20px;">
@@ -275,7 +274,6 @@ with col2:
     if bot_username:
         st.info(f"💡 **Want instant updates?** Once you subscribe, you can click here to message [**@{bot_username}**](https://t.me/{bot_username}) anytime and ask *'How are the waves?'*")
 
-# --- DIAGNOSTICS BUTTONS ---
 st.divider()
 st.subheader("🧪 Diagnostics: System Check")
 colA, colB = st.columns(2)
@@ -284,7 +282,10 @@ with colA:
         try:
             if ANTHROPIC_API_KEY:
                 test_reply = generate_ai_reply("Say: 'Yeww! The AI is working perfectly!'")
-                st.success(f"**AI says:** {test_reply}")
+                if test_reply:
+                    st.success(f"**AI says:** {test_reply}")
+                else:
+                    st.error("AI connected, but returned no text.")
             else:
                 st.error("No Anthropic API key found in Secrets.")
         except Exception as e:
