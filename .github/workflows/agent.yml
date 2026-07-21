@@ -2,8 +2,8 @@ name: Daily Surf Agent
 
 on:
   schedule:
-    - cron: '0 6 * * *' # Runs at 06:00 UTC (08:00 AM Europe)
-  workflow_dispatch: # Gives you a manual "Run" button
+    - cron: '0 6 * * *' 
+  workflow_dispatch: 
 
 jobs:
   run-agent:
@@ -24,5 +24,5 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python agent.py
