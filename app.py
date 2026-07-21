@@ -71,8 +71,8 @@ if GEMINI_API_KEY:
 def generate_ai_reply(prompt_text):
     if not GEMINI_API_KEY: return None
     
-    # FIX: Only use the absolute most stable, free 1.5 models to save Quota!
-    safe_models = ['gemini-1.5-flash', 'gemini-1.5-flash-8b']
+    # FIX: We now strictly use the 2.0 model which we know your key has access to!
+    safe_models = ['gemini-2.0-flash']
     
     safety_settings = [
         {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
@@ -92,8 +92,13 @@ def generate_ai_reply(prompt_text):
                 errors.append(f"[{m_name}: Blocked by safety filters]")
                 continue
         except Exception as e:
-            err_msg = str(e).split('\n')[0][:60]
-            errors.append(f"[{m_name}: {err_msg}]")
+            err_msg = str(e).lower()
+            # SMART DETECTOR: If you hit the speed limit, stop instantly so you don't get blocked!
+            if "429" in err_msg or "quota" in err_msg:
+                raise Exception("Whoa! Google AI speed limit reached. Give me 60 seconds to catch my breath! 🏄‍♂️")
+            
+            err_short = str(e).split('\n')[0][:60]
+            errors.append(f"[{m_name}: {err_short}]")
             continue 
             
     raise Exception(f"{' | '.join(errors)}")
@@ -174,7 +179,11 @@ def start_chatbot():
                     ai_response = generate_ai_reply(prompt)
                     bot.reply_to(message, ai_response)
                 except Exception as ai_e:
-                    bot.reply_to(message, f"Raw stats (AI Error: {str(ai_e)}):\n{raw_data}")
+                    # Special catch for our speed limit message!
+                    if "speed limit" in str(ai_e):
+                        bot.reply_to(message, str(ai_e))
+                    else:
+                        bot.reply_to(message, f"Raw stats (AI Error: {str(ai_e)}):\n{raw_data}")
             else:
                 bot.reply_to(message, f"Raw stats:\n{raw_data}")
         
