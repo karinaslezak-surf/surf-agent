@@ -71,28 +71,24 @@ if GEMINI_API_KEY:
 def generate_ai_reply(prompt_text):
     if not GEMINI_API_KEY: return None
     
-    # MAGIC FINDER: Ask Google what models you actually have access to!
-    try:
-        available = [m.name.replace('models/', '') for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-    except Exception:
-        available = ['gemini-1.5-flash', 'gemini-1.5-flash-8b']
-        
-    if not available:
-        available = ['gemini-1.5-flash']
-        
-    # Sort them so the fastest 'flash' models are tried first
-    models_to_try = [m for m in available if 'flash' in m] + [m for m in available if 'flash' not in m]
+    # FIX: Only use the absolute most stable, free 1.5 models to save Quota!
+    safe_models = ['gemini-1.5-flash', 'gemini-1.5-flash-8b']
+    
+    safety_settings = [
+        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+    ]
     
     errors = []
-    # Try the top 3 allowed models
-    for m_name in models_to_try[:3]:
+    for m_name in safe_models:
         try:
             model = genai.GenerativeModel(m_name)
-            response = model.generate_content(prompt_text)
+            response = model.generate_content(prompt_text, safety_settings=safety_settings)
             try:
                 return response.text.strip()
             except ValueError:
-                # This catches the error if Google's safety filters blocked the response!
                 errors.append(f"[{m_name}: Blocked by safety filters]")
                 continue
         except Exception as e:
@@ -178,7 +174,6 @@ def start_chatbot():
                     ai_response = generate_ai_reply(prompt)
                     bot.reply_to(message, ai_response)
                 except Exception as ai_e:
-                    # Now it will print EXACTLY what happened to every single model we tried!
                     bot.reply_to(message, f"Raw stats (AI Error: {str(ai_e)}):\n{raw_data}")
             else:
                 bot.reply_to(message, f"Raw stats:\n{raw_data}")
