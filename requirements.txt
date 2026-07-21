@@ -3,5 +3,5 @@ SQLAlchemy
 psycopg2-binary
 requests
 pandas
-google-generativeai
 pyTelegramBotAPI
+anthropic
