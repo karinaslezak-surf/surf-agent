@@ -30,10 +30,7 @@ class User(Base):
     name = Column(String)
     telegram_chat_id = Column(String, unique=True)
 
-if ANTHROPIC_API_KEY:
-    claude_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-else:
-    claude_client = None
+claude_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
 
 def get_ai_surf_message(spot_name, target_date, forecast_flow, min_flow, max_flow):
     fallback_msg = (f"Hi, River Currentson here. Surf alert! 🌊\n\n"
@@ -50,18 +47,27 @@ def get_ai_surf_message(spot_name, target_date, forecast_flow, min_flow, max_flo
               f"telling them the river wave at {spot_name} is pumping in 2 days ({target_date}). "
               f"The water flow forecast is {forecast_flow} m³/s. Be friendly and natural, use a dinosaur or surf emoji. No hashtags.")
     
-    try:
-        response = claude_client.messages.create(
-            model="claude-3-haiku-20240307",
-            max_tokens=150,
-            temperature=0.7,
-            messages=[
-                {"role": "user", "content": prompt}
-            ]
-        )
-        return response.content[0].text.strip()
-    except Exception:
-        return fallback_msg
+    models_to_try = [
+        "claude-3-5-haiku-20241022",
+        "claude-3-5-haiku-latest",
+        "claude-3-5-sonnet-20241022",
+        "claude-3-5-sonnet-latest",
+        "claude-3-haiku-20240307"
+    ]
+    
+    for m in models_to_try:
+        try:
+            response = claude_client.messages.create(
+                model=m,
+                max_tokens=150,
+                temperature=0.7,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            return response.content[0].text.strip()
+        except Exception:
+            continue
+            
+    return fallback_msg
 
 def send_telegram_message(chat_id, text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
