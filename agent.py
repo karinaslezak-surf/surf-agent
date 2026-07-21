@@ -44,20 +44,19 @@ def get_ai_surf_message(spot_name, target_date, forecast_flow):
               f"telling them the river wave at {spot_name} is pumping in 2 days ({target_date}). "
               f"The water flow forecast is {forecast_flow} m³/s. Be friendly and natural, use a dinosaur or surf emoji. No hashtags.")
     
-    try:
-        available = [m.name.replace('models/', '') for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-    except Exception:
-        available = ['gemini-1.5-flash', 'gemini-1.5-flash-8b']
-        
-    if not available:
-        available = ['gemini-1.5-flash']
-        
-    models_to_try = [m for m in available if 'flash' in m] + [m for m in available if 'flash' not in m]
+    safe_models = ['gemini-1.5-flash', 'gemini-1.5-flash-8b']
     
-    for m_name in models_to_try[:3]:
+    safety_settings = [
+        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+    ]
+    
+    for m_name in safe_models:
         try:
             model = genai.GenerativeModel(m_name)
-            response = model.generate_content(prompt)
+            response = model.generate_content(prompt, safety_settings=safety_settings)
             try:
                 return response.text.strip()
             except ValueError:
