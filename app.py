@@ -14,6 +14,10 @@ import base64
 st.set_page_config(page_title="River Currentson", page_icon="🦖", layout="wide")
 
 DB_URL = st.secrets.get("DATABASE_URL", "")
+if not DB_URL:
+    st.error("⚠️ No DATABASE_URL found. Please set your Streamlit secrets!")
+    st.stop()
+    
 if DB_URL.startswith("postgres://"):
     DB_URL = DB_URL.replace("postgres://", "postgresql://", 1)
 
