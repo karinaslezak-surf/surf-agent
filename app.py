@@ -77,11 +77,10 @@ def generate_ai_reply(prompt_text):
     if not claude_client: return None
     
     models_to_try = [
+        "claude-haiku-4-5-20251001",
+        "claude-sonnet-4-6",
         "claude-3-5-haiku-20241022",
-        "claude-3-5-haiku-latest",
-        "claude-3-5-sonnet-20241022",
-        "claude-3-5-sonnet-latest",
-        "claude-3-haiku-20240307"
+        "claude-3-5-sonnet-20241022"
     ]
     
     last_error = ""
@@ -95,10 +94,10 @@ def generate_ai_reply(prompt_text):
             )
             return response.content[0].text.strip()
         except Exception as e:
-            last_error = str(e).split('\n')[0]
+            last_error = str(e)
             continue
             
-    raise Exception(f"All Claude models failed. Last error: {last_error[:100]}...")
+    raise Exception(f"All Claude models failed. Exact error: {last_error}")
 
 @st.cache_resource
 def start_chatbot(token):
