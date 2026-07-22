@@ -17,7 +17,7 @@ DB_URL = st.secrets.get("DATABASE_URL", "")
 if not DB_URL:
     st.error("⚠️ No DATABASE_URL found. Please set your Streamlit secrets!")
     st.stop()
-    
+
 if DB_URL.startswith("postgres://"):
     DB_URL = DB_URL.replace("postgres://", "postgresql://", 1)
 
@@ -44,16 +44,18 @@ SessionLocal = sessionmaker(bind=engine)
 def init_db():
     Base.metadata.create_all(engine)
     session = SessionLocal()
-    if session.query(Spot).count() == 0:
-        default_spots = [
-            Spot(name="Bremgarten (Reuss)", latitude=47.3513, longitude=8.3446, min_flow=150.0, max_flow=300.0),
-            Spot(name="Limmat (Zurich)", latitude=47.3892, longitude=8.5137, min_flow=80.0, max_flow=150.0),
-            Spot(name="Thun (Aare)", latitude=46.7579, longitude=7.6279, min_flow=100.0, max_flow=250.0),
-            Spot(name="The Riverwave (Ebensee)", latitude=47.8112, longitude=13.7735, min_flow=50.0, max_flow=150.0)
-        ]
-        session.add_all(default_spots)
-        session.commit()
-    session.close()
+    try:
+        if session.query(Spot).count() == 0:
+            default_spots = [
+                Spot(name="Bremgarten (Reuss)", latitude=47.3513, longitude=8.3446, min_flow=150.0, max_flow=300.0),
+                Spot(name="Limmat (Zurich)", latitude=47.3892, longitude=8.5137, min_flow=80.0, max_flow=150.0),
+                Spot(name="Thun (Aare)", latitude=46.7579, longitude=7.6279, min_flow=100.0, max_flow=250.0),
+                Spot(name="The Riverwave (Ebensee)", latitude=47.8112, longitude=13.7735, min_flow=50.0, max_flow=150.0)
+            ]
+            session.add_all(default_spots)
+            session.commit()
+    finally:
+        session.close()
 
 init_db()
 
@@ -74,7 +76,6 @@ claude_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_
 def generate_ai_reply(prompt_text):
     if not claude_client: return None
     
-    # MAGIC CASCADE: Tries models in order until one works!
     models_to_try = [
         "claude-3-5-haiku-20241022",
         "claude-3-5-haiku-latest",
@@ -95,19 +96,19 @@ def generate_ai_reply(prompt_text):
             return response.content[0].text.strip()
         except Exception as e:
             last_error = str(e).split('\n')[0]
-            continue # Try the next model!
+            continue
             
     raise Exception(f"All Claude models failed. Last error: {last_error[:100]}...")
 
 @st.cache_resource
-def start_chatbot():
-    if not TELEGRAM_TOKEN:
+def start_chatbot(token):
+    if not token:
         return
         
-    try: requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook?drop_pending_updates=True", timeout=5)
+    try: requests.get(f"https://api.telegram.org/bot{token}/deleteWebhook?drop_pending_updates=True", timeout=5)
     except: pass
 
-    bot = telebot.TeleBot(TELEGRAM_TOKEN)
+    bot = telebot.TeleBot(token)
 
     @bot.message_handler(commands=['start', 'help'])
     def send_welcome(message):
@@ -117,17 +118,18 @@ def start_chatbot():
 
     @bot.message_handler(func=lambda message: True)
     def handle_message(message):
+        try: bot.send_chat_action(message.chat.id, 'typing')
+        except: pass
+        
+        session = SessionLocal()
+        chat_id = str(message.chat.id).strip()
+        status_msg = None
+        
         try:
-            try: bot.send_chat_action(message.chat.id, 'typing')
-            except: pass
-            
-            session = SessionLocal()
-            chat_id = str(message.chat.id).strip()
             user = session.query(User).filter_by(telegram_chat_id=chat_id).first()
             
             if not user:
                 bot.reply_to(message, f"🛑 Whoa there! Your chat ID is {chat_id}, but you aren't on the VIP list. Subscribe on the app first!")
-                session.close()
                 return
 
             status_msg = bot.reply_to(message, "🏄‍♂️ Paddling out to check the radar...")
@@ -176,9 +178,8 @@ def start_chatbot():
                     
                     is_good = "🟢" if (best_future != -1 and spot.min_flow <= best_future <= spot.max_flow) else "🔴"
                     backup_msg += f"{is_good} {spot.name}\nToday: {t_str} m³/s | In 2 Days: {f_str} m³/s\n(Ideal: {spot.min_flow} to {spot.max_flow})\n\n"
-                except Exception:
-                    pass
-            session.close()
+                except Exception as api_err:
+                    print(f"open-meteo error for {spot.name}: {api_err}")
 
             final_text = backup_msg
             if ANTHROPIC_API_KEY:
@@ -195,18 +196,25 @@ def start_chatbot():
             
             try: bot.edit_message_text(chat_id=message.chat.id, message_id=status_msg.message_id, text=final_text)
             except: bot.reply_to(message, final_text)
-        
-        except Exception:
-            pass
+            
+        except Exception as e:
+            print(f"bot crash: {e}")
+            if status_msg: 
+                try: bot.edit_message_text(chat_id=message.chat.id, message_id=status_msg.message_id, text=f"🤕 Wipeout! {e}")
+                except: pass
+        finally:
+            session.close()
 
     def run_polling():
         while True:
             try: bot.infinity_polling(skip_pending=False)
-            except Exception: time.sleep(3)
+            except Exception as e: 
+                print(f"polling error: {e}")
+                time.sleep(3)
 
     threading.Thread(target=run_polling, daemon=True).start()
 
-start_chatbot()
+start_chatbot(TELEGRAM_TOKEN)
 
 # --- STREAMLIT UI ---
 if os.path.exists("trex.png"):
@@ -227,81 +235,83 @@ else:
 st.write("I monitor the 48-hour forecasts and notify you when the local spots reach perfect flow.")
 
 session = SessionLocal()
-spots = session.query(Spot).all()
+try:
+    spots = session.query(Spot).all()
 
-if spots:
-    st.map(pd.DataFrame([{"lat": s.latitude, "lon": s.longitude} for s in spots]))
+    if spots:
+        st.map(pd.DataFrame([{"lat": s.latitude, "lon": s.longitude} for s in spots]))
 
-col1, col2 = st.columns(2)
-with col1:
-    st.subheader("📍 Add a secret spot")
-    with st.form("add_spot"):
-        s_name = st.text_input("Spot name")
-        s_lat = st.number_input("Latitude", format="%.4f")
-        s_lon = st.number_input("Longitude", format="%.4f")
-        s_min = st.number_input("Min flow (m³/s)", step=10.0, value=50.0)
-        s_max = st.number_input("Max flow (m³/s)", step=10.0, value=150.0)
-        if st.form_submit_button("Save spot") and s_name:
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("📍 Add a secret spot")
+        with st.form("add_spot"):
+            s_name = st.text_input("Spot name")
+            s_lat = st.number_input("Latitude", format="%.4f")
+            s_lon = st.number_input("Longitude", format="%.4f")
+            s_min = st.number_input("Min flow (m³/s)", step=10.0, value=50.0)
+            s_max = st.number_input("Max flow (m³/s)", step=10.0, value=150.0)
+            if st.form_submit_button("Save spot") and s_name:
+                try:
+                    session.add(Spot(name=s_name, latitude=s_lat, longitude=s_lon, min_flow=s_min, max_flow=s_max))
+                    session.commit()
+                    st.success(f"{s_name} added! 🤫")
+                    session.close()
+                    st.rerun()
+                except Exception:
+                    session.rollback()
+                    st.error("Spot already exists.")
+
+    with col2:
+        st.subheader("📱 Get surf alerts")
+        
+        st.markdown(
+            """
+            **How to find your Chat ID:**
+            1. Open Telegram and search for [**@userinfobot**](https://t.me/userinfobot) (or click the link).
+            2. Tap **Start**.
+            3. Copy the ID number it replies with and paste it below!
+            """
+        )
+        
+        with st.form("add_user"):
+            u_name = st.text_input("Your name")
+            u_chat_id = st.text_input("Telegram chat ID", placeholder="e.g. 123456789")
+            if st.form_submit_button("Subscribe") and u_name and u_chat_id:
+                try:
+                    session.add(User(name=u_name, telegram_chat_id=u_chat_id.strip()))
+                    session.commit()
+                    st.success("You are on the list! Go to Telegram, search for our bot, and click 'Start'.")
+                    session.close()
+                except Exception:
+                    session.rollback()
+                    st.error("Already subscribed.")
+                    
+        if bot_username:
+            st.info(f"💡 **Want instant updates?** Once you subscribe, you can click here to message [**@{bot_username}**](https://t.me/{bot_username}) anytime and ask *'How are the waves?'*")
+
+    st.divider()
+    st.subheader("🧪 Diagnostics: System Check")
+    colA, colB = st.columns(2)
+    with colA:
+        if st.button("1. Test Claude AI Connection"):
             try:
-                session.add(Spot(name=s_name, latitude=s_lat, longitude=s_lon, min_flow=s_min, max_flow=s_max))
-                session.commit()
-                st.success(f"{s_name} added! 🤫")
-                session.close()
-                st.rerun()
-            except Exception:
-                session.rollback()
-                st.error("Spot already exists.")
-
-with col2:
-    st.subheader("📱 Get surf alerts")
-    
-    st.markdown(
-        """
-        **How to find your Chat ID:**
-        1. Open Telegram and search for [**@userinfobot**](https://t.me/userinfobot) (or click the link).
-        2. Tap **Start**.
-        3. Copy the ID number it replies with and paste it below!
-        """
-    )
-    
-    with st.form("add_user"):
-        u_name = st.text_input("Your name")
-        u_chat_id = st.text_input("Telegram chat ID", placeholder="e.g. 123456789")
-        if st.form_submit_button("Subscribe") and u_name and u_chat_id:
-            try:
-                session.add(User(name=u_name, telegram_chat_id=u_chat_id.strip()))
-                session.commit()
-                st.success("You are on the list! Go to Telegram, search for our bot, and click 'Start'.")
-            except Exception:
-                session.rollback()
-                st.error("Already subscribed.")
-                
-    if bot_username:
-        st.info(f"💡 **Want instant updates?** Once you subscribe, you can click here to message [**@{bot_username}**](https://t.me/{bot_username}) anytime and ask *'How are the waves?'*")
-
-st.divider()
-st.subheader("🧪 Diagnostics: System Check")
-colA, colB = st.columns(2)
-with colA:
-    if st.button("1. Test Claude AI Connection"):
-        try:
-            if ANTHROPIC_API_KEY:
-                test_reply = generate_ai_reply("Say: 'Yeww! The AI is working perfectly!'")
-                if test_reply:
-                    st.success(f"**AI says:** {test_reply}")
+                if ANTHROPIC_API_KEY:
+                    test_reply = generate_ai_reply("Say: 'Yeww! The AI is working perfectly!'")
+                    if test_reply:
+                        st.success(f"**AI says:** {test_reply}")
+                    else:
+                        st.error("AI connected, but returned no text.")
                 else:
-                    st.error("AI connected, but returned no text.")
-            else:
-                st.error("No Anthropic API key found in Secrets.")
-        except Exception as e:
-            st.error(f"AI Error: {e}")
+                    st.error("No Anthropic API key found in Secrets.")
+            except Exception as e:
+                st.error(f"AI Error: {e}")
 
-with colB:
-    if st.button("2. Hard Reset Telegram Bot"):
-        try:
-            requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook?drop_pending_updates=true", timeout=5)
-            st.success("Telegram Memory Cleared! The bot is completely un-frozen. You can text him now.")
-        except Exception as e:
-            st.error(f"Telegram Error: {e}")
-
-session.close()
+    with colB:
+        if st.button("2. Hard Reset Telegram Bot"):
+            try:
+                requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook?drop_pending_updates=true", timeout=5)
+                st.success("Telegram Memory Cleared! The bot is completely un-frozen. You can text him now.")
+            except Exception as e:
+                st.error(f"Telegram Error: {e}")
+finally:
+    session.close()
