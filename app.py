@@ -246,6 +246,7 @@ with col1:
                 session.add(Spot(name=s_name, latitude=s_lat, longitude=s_lon, min_flow=s_min, max_flow=s_max))
                 session.commit()
                 st.success(f"{s_name} added! 🤫")
+                session.close()
                 st.rerun()
             except Exception:
                 session.rollback()
