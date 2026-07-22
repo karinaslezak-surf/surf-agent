@@ -53,11 +53,10 @@ def get_ai_surf_message(spot_name, target_date, forecast_flow, min_flow, max_flo
               f"The water flow forecast is {forecast_flow} m³/s. Be friendly and natural, use a dinosaur or surf emoji. No hashtags.")
     
     models_to_try = [
+        "claude-haiku-4-5-20251001",
+        "claude-sonnet-4-6",
         "claude-3-5-haiku-20241022",
-        "claude-3-5-haiku-latest",
-        "claude-3-5-sonnet-20241022",
-        "claude-3-5-sonnet-latest",
-        "claude-3-haiku-20240307"
+        "claude-3-5-sonnet-20241022"
     ]
     
     for m in models_to_try:
