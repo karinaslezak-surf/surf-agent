@@ -14,7 +14,7 @@ TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 
 if not DB_URL:
-    print("no database url found in environment, exiting agent")
+    print("No database url found in environment, exiting agent")
     sys.exit(0)
 
 engine = create_engine(DB_URL)
@@ -41,20 +41,20 @@ class User(Base):
 claude_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
 
 def get_ai_surf_message(spot_name, target_date, forecast_flow, min_flow, max_flow):
-    fallback_msg = (f"hi, river currentson here, surf alert\n\n"
-                    f"{spot_name.title()} is looking perfect in 2 days\n"
-                    f"date: {target_date}\n"
-                    f"pack your gear")
+    fallback_msg = (f"Hi, River Currentson here, surf alert 🌊\n\n"
+                    f"🟢 {spot_name.title()} is looking perfect in 2 days\n"
+                    f"Date: {target_date}\n"
+                    f"Pack your gear")
                     
-    raw_data_backup = f"\n\n---\nraw station data:\n- {spot_name}: {forecast_flow} m³/s (ideal: {min_flow}-{max_flow})"
+    raw_data_backup = f"\n\n---\n🌊 Raw station data:\n- {spot_name}: {forecast_flow} m³/s (ideal: {min_flow}-{max_flow})"
     
     if not claude_client:
         return fallback_msg + raw_data_backup
         
-    prompt = (f"act as river currentson, a knowledgeable and laid-back river surf agent. write exactly 1 or 2 short sentences (maximum 30 words total) to my friends "
+    prompt = (f"Act as River Currentson, a knowledgeable and laid-back river surf agent. Write exactly 1 or 2 short sentences (maximum 30 words total) to my friends "
               f"telling them the river wave at {spot_name} is pumping in 2 days ({target_date}). "
-              f"give a quick recommendation. do not list the exact flow numbers, as the raw data is automatically attached below. "
-              f"do not use any emojis.")
+              f"Give a quick recommendation. Do not list the exact flow numbers, as the raw data is automatically attached below. "
+              f"Use one dinosaur or surf emoji")
     
     models_to_try = [
         "claude-haiku-4-5-20251001",
@@ -73,7 +73,7 @@ def get_ai_surf_message(spot_name, target_date, forecast_flow, min_flow, max_flo
             )
             return response.content[0].text.strip() + raw_data_backup
         except Exception as e:
-            print(f"claude error with model {m}: {e}")
+            print(f"Claude error with model {m}: {e}")
             continue
             
     return fallback_msg + raw_data_backup
@@ -83,7 +83,7 @@ def send_telegram_message(chat_id, text):
     try:
         requests.post(url, json={"chat_id": chat_id, "text": text})
     except Exception as e:
-        print(f"telegram message failed: {e}")
+        print(f"Telegram message failed: {e}")
 
 def run_agent():
     if not DB_URL or not TELEGRAM_TOKEN:
@@ -135,11 +135,10 @@ def run_agent():
                 if best_flow != -1 and spot.min_flow <= best_flow <= spot.max_flow:
                     msg = get_ai_surf_message(spot.name, target_date, round(best_flow, 1), spot.min_flow, spot.max_flow)
                     for user in users:
-                        # only send if public, or if it specifically belongs to this user
                         if not spot.owner_chat_id or spot.owner_chat_id == "" or spot.owner_chat_id == user.telegram_chat_id:
                             send_telegram_message(user.telegram_chat_id, msg)
             except Exception as e:
-                print(f"api fetch failed for {spot.name}: {e}")
+                print(f"Api fetch failed for {spot.name}: {e}")
                 
     finally:
         session.close()
