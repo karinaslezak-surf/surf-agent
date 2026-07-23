@@ -249,7 +249,7 @@ start_chatbot(TELEGRAM_TOKEN)
 # --- streamlit ui ---
 img_path = "raptor1.png"
 if os.path.exists(img_path):
-    st.image(img_path, use_container_width=True)
+    st.image(img_path, width=450)
 
 st.title("Hi, I'm River Currentson, your surf agent")
 
