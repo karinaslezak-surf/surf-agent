@@ -14,7 +14,7 @@ TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 
 if not DB_URL:
-    print("no DATABASE_URL found in environment. exiting agent.")
+    print("no database_url found in environment. exiting agent.")
     sys.exit(0)
 
 engine = create_engine(DB_URL)
@@ -26,6 +26,8 @@ class Spot(Base):
     name = Column(String, unique=True)
     latitude = Column(Float)
     longitude = Column(Float)
+    station_id = Column(String)
+    source = Column(String)
     min_flow = Column(Float)
     max_flow = Column(Float)
 
@@ -38,19 +40,20 @@ class User(Base):
 claude_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
 
 def get_ai_surf_message(spot_name, target_date, forecast_flow, min_flow, max_flow):
-    fallback_msg = (f"Hi, River Currentson here. Surf alert! 🌊\n\n"
+    fallback_msg = (f"hi, river currentson here. surf alert! 🌊\n\n"
                     f"🟢 {spot_name.upper()} is looking perfect in 2 days!\n"
-                    f"Date: {target_date}\n"
-                    f"Forecast: {forecast_flow} m³/s\n"
-                    f"(Ideal is {min_flow} to {max_flow})\n\n"
-                    f"Pack your gear!")
+                    f"date: {target_date}\n"
+                    f"forecast: {forecast_flow} m³/s\n"
+                    f"(ideal is {min_flow} to {max_flow})\n\n"
+                    f"pack your gear!")
     
     if not claude_client:
         return fallback_msg
         
-    prompt = (f"Act as River Currentson, a knowledgeable and laid-back river surf agent. Write a short text (under 3 sentences) to my friends "
+    prompt = (f"act as river currentson, a knowledgeable and laid-back river surf agent. write a short text (under 3 sentences) to my friends "
               f"telling them the river wave at {spot_name} is pumping in 2 days ({target_date}). "
-              f"The water flow forecast is {forecast_flow} m³/s. Be friendly and natural, use a dinosaur or surf emoji. No hashtags.")
+              f"the water flow forecast is {forecast_flow} m³/s, and the ideal range is {min_flow} to {max_flow} m³/s. "
+              f"you must explicitly include these exact m³/s numbers in your message. be friendly and natural, use a dinosaur or surf emoji. no hashtags.")
     
     models_to_try = [
         "claude-haiku-4-5-20251001",
@@ -98,6 +101,8 @@ def run_agent():
         target_date = (datetime.utcnow() + timedelta(days=2)).strftime("%Y-%m-%d")
 
         for spot in spots:
+            # official sensors only broadcast real-time data.
+            # to alert you 48 hours in advance, the agent checks the open-meteo prediction grid.
             offsets = [0, 0.02, -0.02, 0.04, -0.04]
             lats, lons = [], []
             for d_lat in offsets:
