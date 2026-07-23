@@ -278,7 +278,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-img_path = "raptor3.png"
+img_path = "raptor2.png"
 if os.path.exists(img_path):
     with open(img_path, "rb") as image_file:
         encoded_string = base64.b64encode(image_file.read()).decode()
