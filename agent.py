@@ -43,19 +43,16 @@ def get_ai_surf_message(spot_name, target_date, forecast_flow, min_flow, max_flo
     fallback_msg = (f"Hi, River Currentson here, surf alert 🌊\n\n"
                     f"🟢 {spot_name.title()} is looking perfect in 2 days\n"
                     f"Date: {target_date}\n"
-                    f"Forecast: {forecast_flow} m³/s\n"
-                    f"(Ideal is {min_flow} to {max_flow})\n\n"
                     f"Pack your gear")
                     
-    raw_data_backup = f"\n\n---\nRaw station data:\n- {spot_name}: {forecast_flow} m³/s (ideal: {min_flow}-{max_flow})"
+    raw_data_backup = f"\n\n---\n🌊 Raw station data:\n- {spot_name}: {forecast_flow} m³/s (ideal: {min_flow}-{max_flow})"
     
     if not claude_client:
         return fallback_msg + raw_data_backup
         
     prompt = (f"Act as River Currentson, a knowledgeable and laid-back river surf agent. Write a text to my friends "
               f"telling them the river wave at {spot_name} is pumping in 2 days ({target_date}). "
-              f"The water flow forecast is {forecast_flow} m³/s, and the ideal range is {min_flow} to {max_flow} m³/s. "
-              f"You must explicitly include these exact m³/s numbers in your message and format the details as a bulleted list. "
+              f"Give a stoke-building summary and a quick recommendation. Do not list the exact flow numbers, as the raw data is automatically attached below your message. "
               f"Be friendly and natural, use a dinosaur or surf emoji")
     
     models_to_try = [
@@ -104,8 +101,6 @@ def run_agent():
         target_date = (datetime.utcnow() + timedelta(days=2)).strftime("%Y-%m-%d")
 
         for spot in spots:
-            # official sensors only broadcast real-time data
-            # to alert you 48 hours in advance, the agent checks the open-meteo prediction grid
             offsets = [0, 0.02, -0.02, 0.04, -0.04]
             lats, lons = [], []
             for d_lat in offsets:
