@@ -1,5 +1,5 @@
 import streamlit as st
-from sqlalchemy import create_engine, Column, Integer, String, Float
+from sqlalchemy import create_engine, Column, Integer, String, Float, or_
 from sqlalchemy.orm import declarative_base, sessionmaker
 import pandas as pd
 import threading
@@ -11,11 +11,11 @@ import time
 import os
 import base64
 
-st.set_page_config(page_title="River currentson", page_icon="raptor3.png", layout="wide")
+st.set_page_config(page_title="river currentson", page_icon="raptor3.png", layout="wide")
 
 DB_URL = st.secrets.get("DATABASE_URL", "")
 if not DB_URL:
-    st.error("⚠️ No database url found, please set your streamlit secrets")
+    st.error("no database url found, please set your streamlit secrets")
     st.stop()
 
 if DB_URL.startswith("postgres://"):
@@ -34,6 +34,7 @@ class Spot(Base):
     source = Column(String)
     min_flow = Column(Float)
     max_flow = Column(Float)
+    owner_chat_id = Column(String, nullable=True)
 
 class User(Base):
     __tablename__ = 'users'
@@ -46,7 +47,7 @@ SessionLocal = sessionmaker(bind=engine)
 def init_db():
     session = SessionLocal()
     try:
-        session.query(Spot.station_id).first()
+        session.query(Spot.owner_chat_id).first()
     except Exception:
         session.rollback()
         Spot.__table__.drop(engine, checkfirst=True)
@@ -58,11 +59,11 @@ def init_db():
     try:
         if session.query(Spot).count() == 0:
             default_spots = [
-                Spot(name="bremgarten (reuss)", latitude=47.3557, longitude=8.3405, station_id="2018", source="bafu", min_flow=150.0, max_flow=300.0),
-                Spot(name="thun - mühleschleuse (aare)", latitude=46.7578, longitude=7.6294, station_id="2135", source="bafu", min_flow=100.0, max_flow=250.0),
-                Spot(name="thun - scherzligschleuse (aare)", latitude=46.7563, longitude=7.6333, station_id="2135", source="bafu", min_flow=100.0, max_flow=250.0),
-                Spot(name="limmat", latitude=47.4049, longitude=8.4589, station_id="2243", source="bafu", min_flow=80.0, max_flow=150.0),
-                Spot(name="the riverwave (ebensee)", latitude=47.8286, longitude=13.7548, station_id="16572", source="ehyd", min_flow=50.0, max_flow=150.0)
+                Spot(name="bremgarten (reuss)", latitude=47.3557, longitude=8.3405, station_id="2018", source="bafu", min_flow=150.0, max_flow=300.0, owner_chat_id=None),
+                Spot(name="thun - mühleschleuse (aare)", latitude=46.7578, longitude=7.6294, station_id="2135", source="bafu", min_flow=100.0, max_flow=250.0, owner_chat_id=None),
+                Spot(name="thun - scherzligschleuse (aare)", latitude=46.7563, longitude=7.6333, station_id="2135", source="bafu", min_flow=100.0, max_flow=250.0, owner_chat_id=None),
+                Spot(name="limmat", latitude=47.4049, longitude=8.4589, station_id="2243", source="bafu", min_flow=80.0, max_flow=150.0, owner_chat_id=None),
+                Spot(name="the riverwave (ebensee)", latitude=47.8286, longitude=13.7548, station_id="16572", source="ehyd", min_flow=50.0, max_flow=150.0, owner_chat_id=None)
             ]
             session.add_all(default_spots)
             session.commit()
@@ -109,7 +110,7 @@ def generate_ai_reply(prompt_text):
             last_error = str(e)
             continue
             
-    raise Exception(f"All claude models failed, exact error: {last_error}")
+    raise Exception(f"all claude models failed, exact error: {last_error}")
 
 @st.cache_resource
 def start_chatbot(token):
@@ -125,7 +126,7 @@ def start_chatbot(token):
     def send_welcome(message):
         try: bot.send_chat_action(message.chat.id, 'typing')
         except: pass
-        bot.reply_to(message, "Yeww! 🤙 Hi, I'm River. River Currentson, your surf agent, text me anytime to check the waves")
+        bot.reply_to(message, "yeww! hi, i'm river. river currentson, your surf agent, text me anytime to check the waves")
 
     @bot.message_handler(func=lambda message: True)
     def handle_message(message):
@@ -140,17 +141,18 @@ def start_chatbot(token):
             user = session.query(User).filter_by(telegram_chat_id=chat_id).first()
             
             if not user:
-                bot.reply_to(message, f"🛑 Whoa there! Your chat ID is {chat_id}, but you aren't on the VIP list, subscribe on the app first")
+                bot.reply_to(message, f"whoa there! your chat id is {chat_id}, but you aren't on the vip list, subscribe on the app first")
                 return
 
-            status_msg = bot.reply_to(message, "🏄‍♂️ Paddling out to check the radar")
+            status_msg = bot.reply_to(message, "paddling out to check the radar...")
 
-            spots = session.query(Spot).all()
+            # pull public spots AND the user's private spots
+            spots = session.query(Spot).filter(or_(Spot.owner_chat_id == None, Spot.owner_chat_id == "", Spot.owner_chat_id == chat_id)).all()
             today_date = datetime.utcnow().strftime("%Y-%m-%d")
             target_date = (datetime.utcnow() + timedelta(days=2)).strftime("%Y-%m-%d")
             
             raw_data = ""
-            backup_msg = "---\n🌊 Raw station data:\n\n"
+            backup_msg = "---\nraw station data:\n\n"
             
             for spot in spots:
                 best_today, best_future = -1, -1
@@ -164,7 +166,7 @@ def start_chatbot(token):
                     elif spot.source == "ehyd":
                         pass
                 except Exception as e:
-                    print(f"Official sensor error for {spot.name}: {e}")
+                    print(f"official sensor error for {spot.name}: {e}")
 
                 offsets = [0, 0.02, -0.02, 0.04, -0.04]
                 lats, lons = [], []
@@ -200,37 +202,37 @@ def start_chatbot(token):
                         best_today = om_today
                         
                 except Exception as api_err:
-                    print(f"Open-meteo error for {spot.name}: {api_err}")
+                    print(f"open-meteo error for {spot.name}: {api_err}")
 
                 t_str = round(best_today, 1) if best_today != -1 else "n/a"
                 f_str = round(best_future, 1) if best_future != -1 else "n/a"
                 
                 raw_data += f"- {spot.name}: {t_str} m³/s today, {f_str} m³/s in 2 days (ideal is {spot.min_flow}-{spot.max_flow})\n"
                 
-                is_good = "🟢" if (best_future != -1 and spot.min_flow <= best_future <= spot.max_flow) else "🔴"
-                backup_msg += f"{is_good} {spot.name}\nToday: {t_str} m³/s | In 2 days: {f_str} m³/s\n(Ideal: {spot.min_flow} to {spot.max_flow})\n\n"
+                is_good = "good" if (best_future != -1 and spot.min_flow <= best_future <= spot.max_flow) else "poor"
+                backup_msg += f"{is_good.upper()} - {spot.name}\ntoday: {t_str} m³/s | in 2 days: {f_str} m³/s\n(ideal: {spot.min_flow} to {spot.max_flow})\n\n"
 
             final_text = backup_msg
             if ANTHROPIC_API_KEY:
-                prompt = (f"Act as River Currentson, a knowledgeable and laid-back river surf agent. A friend named '{user.name}' texted you: '{message.text}'\n\n"
-                          f"Live river flow data:\n{raw_data}\n\n"
-                          f"Write exactly 1 or 2 short sentences (maximum 30 words total). Give a quick summary of the overall conditions and one clear recommendation on where to surf. "
-                          f"Do not list the flow numbers, as the raw data is attached below. Be helpful, and use one surf or dinosaur emoji")
+                prompt = (f"act as river currentson, a knowledgeable and laid-back river surf agent. a friend named '{user.name}' texted you: '{message.text}'\n\n"
+                          f"live river flow data:\n{raw_data}\n\n"
+                          f"write exactly 1 or 2 short sentences (maximum 30 words total). give a quick summary of the overall conditions and one clear recommendation on where to surf. "
+                          f"do not list the flow numbers, as the raw data is attached below. be helpful. do not use any emojis.")
                 
                 try:
                     ai_response = generate_ai_reply(prompt)
                     if ai_response: final_text = f"{ai_response}\n\n{backup_msg}"
                 except Exception as ai_e:
                     safe_error = str(ai_e).replace('*', '').replace('_', '').replace('[', '').replace(']', '')
-                    final_text = f"🤖 AI error: {safe_error[:150]}...\n\n{backup_msg}"
+                    final_text = f"ai error: {safe_error[:150]}...\n\n{backup_msg}"
             
             try: bot.edit_message_text(chat_id=message.chat.id, message_id=status_msg.message_id, text=final_text)
             except: bot.reply_to(message, final_text)
             
         except Exception as e:
-            print(f"Bot crash: {e}")
+            print(f"bot crash: {e}")
             if status_msg: 
-                try: bot.edit_message_text(chat_id=message.chat.id, message_id=status_msg.message_id, text=f"🤕 Wipeout! {e}")
+                try: bot.edit_message_text(chat_id=message.chat.id, message_id=status_msg.message_id, text=f"wipeout! {e}")
                 except: pass
         finally:
             session.close()
@@ -239,7 +241,7 @@ def start_chatbot(token):
         while True:
             try: bot.infinity_polling(skip_pending=False)
             except Exception as e: 
-                print(f"Polling error: {e}")
+                print(f"polling error: {e}")
                 time.sleep(3)
 
     threading.Thread(target=run_polling, daemon=True).start()
@@ -251,7 +253,7 @@ st.markdown(
     """
     <style>
     .stApp {
-        background-color: #F3ECDE;
+        background-color: #f3ecde;
     }
     </style>
     """,
@@ -280,10 +282,11 @@ else:
 
 session = SessionLocal()
 try:
-    spots = session.query(Spot).all()
+    # only show public spots on the public map
+    public_spots = session.query(Spot).filter(or_(Spot.owner_chat_id == None, Spot.owner_chat_id == "")).all()
 
-    if spots:
-        st.map(pd.DataFrame([{"lat": s.latitude, "lon": s.longitude} for s in spots]))
+    if public_spots:
+        st.map(pd.DataFrame([{"lat": s.latitude, "lon": s.longitude} for s in public_spots]))
 
     col1, col2 = st.columns(2)
     with col1:
@@ -294,11 +297,12 @@ try:
             s_lon = st.number_input("Longitude", format="%.4f")
             s_min = st.number_input("Min flow (m³/s)", step=10.0, value=50.0)
             s_max = st.number_input("Max flow (m³/s)", step=10.0, value=150.0)
-            if st.form_submit_button("Save spot") and s_name:
+            s_chat_id = st.text_input("Your Telegram chat ID (keeps spot private)", placeholder="e.g. 123456789")
+            if st.form_submit_button("Save spot") and s_name and s_chat_id:
                 try:
-                    session.add(Spot(name=s_name, latitude=s_lat, longitude=s_lon, station_id="", source="open-meteo", min_flow=s_min, max_flow=s_max))
+                    session.add(Spot(name=s_name, latitude=s_lat, longitude=s_lon, station_id="", source="open-meteo", min_flow=s_min, max_flow=s_max, owner_chat_id=s_chat_id.strip()))
                     session.commit()
-                    st.success(f"{s_name} added 🤫")
+                    st.success(f"{s_name} added")
                     session.close()
                     st.rerun()
                 except Exception:
