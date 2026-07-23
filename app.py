@@ -247,12 +247,23 @@ def start_chatbot(token):
 start_chatbot(TELEGRAM_TOKEN)
 
 # --- streamlit ui ---
-col_img, col_text = st.columns([1, 3], vertical_alignment="center")
+st.markdown(
+    """
+    <style>
+    .stApp {
+        background-color: #F3ECDE;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+col_img, col_text = st.columns([1, 2], gap="small", vertical_alignment="center")
 
 img_path = "raptor2.png"
 with col_img:
     if os.path.exists(img_path):
-        st.image(img_path, width=200)
+        st.image(img_path, width=280)
 
 with col_text:
     st.title("Hi, I'm River Currentson, your surf agent")
