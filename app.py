@@ -278,7 +278,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-img_path = "raptor3.png"
+img_path = "raptor2.png"
 if os.path.exists(img_path):
     with open(img_path, "rb") as image_file:
         encoded_string = base64.b64encode(image_file.read()).decode()
@@ -311,7 +311,7 @@ try:
         with st.form("add_user"):
             u_name = st.text_input("Your name")
             u_chat_id = st.text_input("Telegram chat ID", placeholder="e.g. 123456789")
-            st.caption("How to find your chat ID: Search for [@userinfobot](https://t.me/userinfobot) on Telegram, tap **Start**, and copy the number it replies with.")
+            st.caption("How to find your chat ID: Search for [@userinfobot](https://t.me/userinfobot) on Telegram, tap **Start**, and copy the number it replies with")
             
             if st.form_submit_button("Subscribe") and u_name and u_chat_id:
                 try:
