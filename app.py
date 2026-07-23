@@ -11,7 +11,7 @@ import time
 import os
 import base64
 
-st.set_page_config(page_title="River currentson", layout="wide")
+st.set_page_config(page_title="River currentson", page_icon="raptor3.png", layout="wide")
 
 DB_URL = st.secrets.get("DATABASE_URL", "")
 if not DB_URL:
@@ -258,23 +258,14 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+col_img, col_text = st.columns([1, 2], gap="small", vertical_alignment="center")
+
 img_path = "raptor2.png"
-if os.path.exists(img_path):
-    with open(img_path, "rb") as image_file:
-        encoded_string = base64.b64encode(image_file.read()).decode()
-    st.markdown(
-        f'''
-        <div style="display: flex; align-items: center; gap: 20px; margin-bottom: 20px;">
-            <img src="data:image/png;base64,{encoded_string}" style="width: 280px; height: auto;">
-            <div>
-                <h1 style="margin: 0; padding: 0;">Hi, I'm River Currentson, your surf agent</h1>
-                <p style="margin: 5px 0 0 0; font-size: 1.1rem;">I monitor the 48-hour forecasts and notify you when the local spots reach perfect flow</p>
-            </div>
-        </div>
-        ''', 
-        unsafe_allow_html=True
-    )
-else:
+with col_img:
+    if os.path.exists(img_path):
+        st.image(img_path, width=280)
+
+with col_text:
     st.title("Hi, I'm River Currentson, your surf agent")
     st.write("I monitor the 48-hour forecasts and notify you when the local spots reach perfect flow")
 
