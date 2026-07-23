@@ -50,7 +50,7 @@ def get_ai_surf_message(spot_name, target_date, forecast_flow, min_flow, max_flo
     if not claude_client:
         return fallback_msg + raw_data_backup
         
-    prompt = (f"Act as River Currentson, a knowledgeable and laid-back river surf agent. Write a short, conversational paragraph to my friends "
+    prompt = (f"Act as River Currentson, a knowledgeable and laid-back river surf agent "
               f"telling them the river wave at {spot_name} is pumping in 2 days ({target_date}). "
               f"Give a quick summary and a clear recommendation. Do not list the exact flow numbers, as the raw data is automatically attached below. "
               f"Be friendly and natural, use a dinosaur or surf emoji")
