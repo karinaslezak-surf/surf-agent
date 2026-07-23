@@ -312,7 +312,7 @@ try:
         with st.form("add_user"):
             u_name = st.text_input("your name")
             u_chat_id = st.text_input("telegram chat id", placeholder="e.g. 123456789")
-            st.caption("how to find your chat id: search for [@userinfobot](https://t.me/userinfobot) on telegram, tap **start**, and copy the number it replies with.")
+            st.caption("how to find your chat id: search for [@userinfobot](https://t.me/userinfobot) on telegram, tap **start**, and copy the number it replies with")
             
             if st.form_submit_button("subscribe") and u_name and u_chat_id:
                 try:
