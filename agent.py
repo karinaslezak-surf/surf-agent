@@ -50,9 +50,9 @@ def get_ai_surf_message(spot_name, target_date, forecast_flow, min_flow, max_flo
     if not claude_client:
         return fallback_msg + raw_data_backup
         
-    prompt = (f"Act as River Currentson, a knowledgeable and laid-back river surf agent. Write a text to my friends "
+    prompt = (f"Act as River Currentson, a knowledgeable and laid-back river surf agent. Write a short, conversational paragraph to my friends "
               f"telling them the river wave at {spot_name} is pumping in 2 days ({target_date}). "
-              f"Give a stoke-building summary and a quick recommendation. Do not list the exact flow numbers, as the raw data is automatically attached below your message. "
+              f"Give a quick summary and a clear recommendation. Do not list the exact flow numbers, as the raw data is automatically attached below. "
               f"Be friendly and natural, use a dinosaur or surf emoji")
     
     models_to_try = [
@@ -66,7 +66,7 @@ def get_ai_surf_message(spot_name, target_date, forecast_flow, min_flow, max_flo
         try:
             response = claude_client.messages.create(
                 model=m,
-                max_tokens=1000,
+                max_tokens=300,
                 temperature=0.7,
                 messages=[{"role": "user", "content": prompt}]
             )
