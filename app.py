@@ -216,7 +216,7 @@ def start_chatbot(token):
                 prompt = (f"act as river currentson, a knowledgeable and laid-back river surf agent. a friend named '{user.name}' texted you: '{message.text}'\n\n"
                           f"live river flow data:\n{raw_data}\n\n"
                           f"write exactly 1 or 2 short sentences (maximum 30 words total). give a quick summary of the overall conditions and one clear recommendation on where to surf. "
-                          f"do not list the flow numbers, as the raw data is attached below. be helpful, and use one surf or dinosaur emoji")
+                          f"do not list the flow numbers, as the raw data is attached below. be helpful, and use one surf or dinosaur emoji. write entirely in lowercase, do not use capital letters.")
                 
                 try:
                     ai_response = generate_ai_reply(prompt)
@@ -308,6 +308,7 @@ try:
     col1, col2 = st.columns(2)
     with col1:
         st.subheader("📱 get surf alerts")
+        
         with st.form("add_user"):
             u_name = st.text_input("your name")
             u_chat_id = st.text_input("telegram chat id", placeholder="e.g. 123456789")
