@@ -249,7 +249,28 @@ start_chatbot(TELEGRAM_TOKEN)
 # --- streamlit ui ---
 img_path = "raptor1.png"
 if os.path.exists(img_path):
-    st.image(img_path, width=450)
+    with open(img_path, "rb") as image_file:
+        encoded_string = base64.b64encode(image_file.read()).decode()
+    st.markdown(
+        f"""
+        <style>
+        .stApp::before {{
+            content: "";
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-image: url(data:image/png;base64,{encoded_string});
+            background-size: cover;
+            background-position: center;
+            opacity: 0.15;
+            z-index: -1;
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
 
 st.title("Hi, I'm River Currentson, your surf agent")
 
