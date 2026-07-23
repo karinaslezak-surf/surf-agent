@@ -11,7 +11,7 @@ import time
 import os
 import base64
 
-st.set_page_config(page_title="River currentson", page_icon="🦖", layout="wide")
+st.set_page_config(page_title="River currentson", layout="wide")
 
 DB_URL = st.secrets.get("DATABASE_URL", "")
 if not DB_URL:
@@ -247,20 +247,11 @@ def start_chatbot(token):
 start_chatbot(TELEGRAM_TOKEN)
 
 # --- streamlit ui ---
-if os.path.exists("trex.png"):
-    with open("trex.png", "rb") as image_file:
-        encoded_string = base64.b64encode(image_file.read()).decode()
-    st.markdown(
-        f'''
-        <div style="display: flex; align-items: center; margin-bottom: 20px;">
-            <img src="data:image/png;base64,{encoded_string}" style="height: 100px; width: auto; margin-right: 20px;">
-            <h1 style="margin: 0; padding: 0;">Hi, I'm River Currentson, your surf agent</h1>
-        </div>
-        ''', 
-        unsafe_allow_html=True
-    )
-else:
-    st.title("🦖 Hi, I'm River Currentson, your surf agent")
+img_path = "raptor1.png"
+if os.path.exists(img_path):
+    st.image(img_path, use_container_width=True)
+
+st.title("Hi, I'm River Currentson, your surf agent")
 
 st.write("I monitor the 48-hour forecasts and notify you when the local spots reach perfect flow")
 
