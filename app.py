@@ -278,7 +278,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-img_path = "raptor2.png"
+img_path = "raptor3.png"
 if os.path.exists(img_path):
     with open(img_path, "rb") as image_file:
         encoded_string = base64.b64encode(image_file.read()).decode()
@@ -307,26 +307,6 @@ try:
 
     col1, col2 = st.columns(2)
     with col1:
-        st.subheader("📍 Add a secret spot")
-        with st.form("add_spot"):
-            s_name = st.text_input("Spot name")
-            s_lat = st.number_input("Latitude", format="%.4f")
-            s_lon = st.number_input("Longitude", format="%.4f")
-            s_min = st.number_input("Min flow (m³/s)", step=10.0, value=50.0)
-            s_max = st.number_input("Max flow (m³/s)", step=10.0, value=150.0)
-            s_chat_id = st.text_input("Your Telegram chat ID (keeps spot private)", placeholder="e.g. 123456789")
-            if st.form_submit_button("Save spot") and s_name and s_chat_id:
-                try:
-                    session.add(Spot(name=s_name, latitude=s_lat, longitude=s_lon, station_id="", source="open-meteo", min_flow=s_min, max_flow=s_max, owner_chat_id=s_chat_id.strip()))
-                    session.commit()
-                    st.success(f"{s_name} added 🤫")
-                    session.close()
-                    st.rerun()
-                except Exception:
-                    session.rollback()
-                    st.error("Spot already exists")
-
-    with col2:
         st.subheader("📱 Get surf alerts")
         
         st.markdown(
@@ -353,6 +333,26 @@ try:
                     
         if bot_username:
             st.info(f"💡 **Want instant updates?** Once you subscribe, you can click here to message [**@{bot_username}**](https://t.me/{bot_username}) anytime and ask 'how are the waves'")
+
+    with col2:
+        st.subheader("📍 Add a secret spot")
+        with st.form("add_spot"):
+            s_name = st.text_input("Spot name")
+            s_lat = st.number_input("Latitude", format="%.4f")
+            s_lon = st.number_input("Longitude", format="%.4f")
+            s_min = st.number_input("Min flow (m³/s)", step=10.0, value=50.0)
+            s_max = st.number_input("Max flow (m³/s)", step=10.0, value=150.0)
+            s_chat_id = st.text_input("Your Telegram chat ID (keeps spot private)", placeholder="e.g. 123456789")
+            if st.form_submit_button("Save spot") and s_name and s_chat_id:
+                try:
+                    session.add(Spot(name=s_name, latitude=s_lat, longitude=s_lon, station_id="", source="open-meteo", min_flow=s_min, max_flow=s_max, owner_chat_id=s_chat_id.strip()))
+                    session.commit()
+                    st.success(f"{s_name} added 🤫")
+                    session.close()
+                    st.rerun()
+                except Exception:
+                    session.rollback()
+                    st.error("Spot already exists")
 
 finally:
     session.close()
