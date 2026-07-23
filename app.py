@@ -100,7 +100,7 @@ def generate_ai_reply(prompt_text):
         try:
             response = claude_client.messages.create(
                 model=m,
-                max_tokens=300,
+                max_tokens=150,
                 temperature=0.7,
                 messages=[{"role": "user", "content": prompt_text}]
             )
@@ -143,7 +143,7 @@ def start_chatbot(token):
                 bot.reply_to(message, f"🛑 Whoa there! Your chat ID is {chat_id}, but you aren't on the VIP list, subscribe on the app first")
                 return
 
-            status_msg = bot.reply_to(message, "🏄‍♂️ Paddling out to check the radar...")
+            status_msg = bot.reply_to(message, "🏄‍♂️ Paddling out to check the radar")
 
             spots = session.query(Spot).all()
             today_date = datetime.utcnow().strftime("%Y-%m-%d")
@@ -214,8 +214,8 @@ def start_chatbot(token):
             if ANTHROPIC_API_KEY:
                 prompt = (f"Act as River Currentson, a knowledgeable and laid-back river surf agent. A friend named '{user.name}' texted you: '{message.text}'\n\n"
                           f"Live river flow data:\n{raw_data}\n\n"
-                          f"Write a short, conversational paragraph. Give a quick summary of the overall conditions and a clear recommendation on where to surf. "
-                          f"Do not list the flow numbers, as the raw data is attached below. Be helpful, and use a surf or dinosaur emoji")
+                          f"Write exactly 1 or 2 short sentences (maximum 30 words total). Give a quick summary of the overall conditions and one clear recommendation on where to surf. "
+                          f"Do not list the flow numbers, as the raw data is attached below. Be helpful, and use one surf or dinosaur emoji")
                 
                 try:
                     ai_response = generate_ai_reply(prompt)
