@@ -42,7 +42,7 @@ claude_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_
 
 def get_ai_surf_message(spot_name, target_date, forecast_flow, min_flow, max_flow):
     fallback_msg = (f"hi, river currentson here, surf alert 🌊\n\n"
-                    f"🟢 {spot_name.title()} is looking perfect in 2 days\n"
+                    f"🟢 {spot_name} is looking perfect in 2 days\n"
                     f"date: {target_date}\n"
                     f"pack your gear")
                     
@@ -54,7 +54,7 @@ def get_ai_surf_message(spot_name, target_date, forecast_flow, min_flow, max_flo
     prompt = (f"act as river currentson, a knowledgeable and laid-back river surf agent. write exactly 1 or 2 short sentences (maximum 30 words total) to my friends "
               f"telling them the river wave at {spot_name} is pumping in 2 days ({target_date}). "
               f"give a quick recommendation. do not list the exact flow numbers, as the raw data is automatically attached below. "
-              f"use one dinosaur or surf emoji")
+              f"use one dinosaur or surf emoji. write entirely in lowercase, do not use capital letters.")
     
     models_to_try = [
         "claude-haiku-4-5-20251001",
