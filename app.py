@@ -308,19 +308,11 @@ try:
     col1, col2 = st.columns(2)
     with col1:
         st.subheader("📱 Get surf alerts")
-        
-        st.markdown(
-            """
-            **How to find your chat ID:**
-            1. Open Telegram and search for [**@userinfobot**](https://t.me/userinfobot) (or click the link)
-            2. Tap **Start**
-            3. Copy the ID number it replies with and paste it below
-            """
-        )
-        
         with st.form("add_user"):
             u_name = st.text_input("Your name")
             u_chat_id = st.text_input("Telegram chat ID", placeholder="e.g. 123456789")
+            st.caption("How to find your chat ID: Search for [@userinfobot](https://t.me/userinfobot) on Telegram, tap **Start**, and copy the number it replies with.")
+            
             if st.form_submit_button("Subscribe") and u_name and u_chat_id:
                 try:
                     session.add(User(name=u_name, telegram_chat_id=u_chat_id.strip()))
