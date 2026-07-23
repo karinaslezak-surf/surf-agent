@@ -49,7 +49,6 @@ def init_db():
         session.query(Spot.station_id).first()
     except Exception:
         session.rollback()
-        # safely drops only the spots table if schema is outdated, protecting users table
         Spot.__table__.drop(engine, checkfirst=True)
     finally:
         session.close()
@@ -156,7 +155,6 @@ def start_chatbot(token):
             for spot in spots:
                 best_today, best_future = -1, -1
                 
-                # 1. ping official stations for live data
                 try:
                     if spot.source == "bafu":
                         bafu_url = f"https://api.existenz.ch/bafu/station/{spot.station_id}"
@@ -164,13 +162,10 @@ def start_chatbot(token):
                         if 'parameters' in b_resp and 'abfluss' in b_resp['parameters']:
                             best_today = float(b_resp['parameters']['abfluss']['value'])
                     elif spot.source == "ehyd":
-                        # ehyd generally exports as csv, so until a dedicated parser is added
-                        # we pass and let the open-meteo fallback catch the forecast
                         pass
                 except Exception as e:
                     print(f"Official sensor error for {spot.name}: {e}")
 
-                # 2. ping open-meteo for the 48h forecast (and as a fallback for today)
                 offsets = [0, 0.02, -0.02, 0.04, -0.04]
                 lats, lons = [], []
                 for d_lat in offsets:
@@ -219,7 +214,7 @@ def start_chatbot(token):
             if ANTHROPIC_API_KEY:
                 prompt = (f"Act as River Currentson, a knowledgeable and laid-back river surf agent. A friend named '{user.name}' texted you: '{message.text}'\n\n"
                           f"Live river flow data:\n{raw_data}\n\n"
-                          f"Reply naturally using this data. You must explicitly include the exact m³/s flow numbers and the ideal ranges in your response, and format the spot forecasts as a bulleted list. Be helpful and reliable. Use a surf or dinosaur emoji occasionally")
+                          f"Write a short, natural summary of the overall conditions and give a clear recommendation on where to surf. Do not just list out the flow numbers for every spot, as the raw data is automatically attached below your message. Be helpful and reliable, and use a surf or dinosaur emoji occasionally")
                 
                 try:
                     ai_response = generate_ai_reply(prompt)
@@ -323,29 +318,5 @@ try:
         if bot_username:
             st.info(f"💡 **Want instant updates?** Once you subscribe, you can click here to message [**@{bot_username}**](https://t.me/{bot_username}) anytime and ask 'how are the waves'")
 
-    st.divider()
-    st.subheader("🧪 Diagnostics: system check")
-    colA, colB = st.columns(2)
-    with colA:
-        if st.button("1. Test Claude AI connection"):
-            try:
-                if ANTHROPIC_API_KEY:
-                    test_reply = generate_ai_reply("Say: 'yeww! the ai is working perfectly'")
-                    if test_reply:
-                        st.success(f"**AI says:** {test_reply}")
-                    else:
-                        st.error("AI connected, but returned no text")
-                else:
-                    st.error("No Anthropic API key found in secrets")
-            except Exception as e:
-                st.error(f"AI error: {e}")
-
-    with colB:
-        if st.button("2. Hard reset Telegram bot"):
-            try:
-                requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook?drop_pending_updates=true", timeout=5)
-                st.success("Telegram memory cleared, the bot is completely un-frozen and you can text him now")
-            except Exception as e:
-                st.error(f"Telegram error: {e}")
 finally:
     session.close()
